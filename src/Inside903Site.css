@@ -1,0 +1,592 @@
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+:root {
+  --ink: #0b0c10;
+  --charcoal: #12141b;
+  --slate: #1e2230;
+  --steel: #2f364a;
+  --brand-red: #e11d2e;
+  --brand-red-dark: #b40f1f;
+  --brand-white: #f5f5f7;
+  --brand-gold: #f9b233;
+  --brand-gray: #c7c9d1;
+  --glass: rgba(255, 255, 255, 0.06);
+  --glass-strong: rgba(255, 255, 255, 0.12);
+  --shadow-soft: 0 20px 45px rgba(0, 0, 0, 0.35);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Space Grotesk', sans-serif;
+  background: radial-gradient(circle at top, #1d2233 0%, #0a0c12 55%, #050607 100%);
+  color: var(--brand-white);
+}
+
+.site-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 48px;
+  background: rgba(8, 10, 14, 0.9);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+}
+
+.brand {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.logo-badge {
+  background: linear-gradient(135deg, #0b0c10, #1b1f2b);
+  border: 2px solid var(--brand-red);
+  border-radius: 16px;
+  padding: 10px 16px 8px;
+  text-transform: uppercase;
+  font-family: 'Bebas Neue', sans-serif;
+  box-shadow: var(--shadow-soft);
+  line-height: 1;
+}
+
+.logo-top {
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  display: block;
+  color: var(--brand-gray);
+}
+
+.logo-main {
+  font-size: 42px;
+  letter-spacing: 0.08em;
+  display: block;
+  color: var(--brand-white);
+}
+
+.logo-sub {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  display: block;
+  color: var(--brand-gold);
+}
+
+.brand-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 22px;
+  margin: 0;
+}
+
+.brand-tagline {
+  margin: 4px 0 0;
+  color: var(--brand-gray);
+  font-size: 14px;
+}
+
+.site-nav {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.nav-pill {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--brand-white);
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nav-pill.active,
+.nav-pill:hover {
+  border-color: var(--brand-red);
+  color: var(--brand-white);
+  background: rgba(225, 29, 46, 0.18);
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.primary-button,
+.ghost-button {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: 12px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.primary-button {
+  background: linear-gradient(135deg, var(--brand-red), var(--brand-red-dark));
+  color: var(--brand-white);
+  box-shadow: 0 18px 40px rgba(225, 29, 46, 0.3);
+}
+
+.primary-button:hover {
+  transform: translateY(-1px);
+}
+
+.ghost-button {
+  background: transparent;
+  color: var(--brand-white);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.ghost-button.full {
+  width: 100%;
+}
+
+main {
+  flex: 1;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 32px;
+  padding: 64px 48px 40px;
+}
+
+.hero-content h1 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(2.8rem, 3.8vw, 4.4rem);
+  margin: 12px 0;
+}
+
+.hero-content p {
+  color: var(--brand-gray);
+  max-width: 540px;
+}
+
+.hero-kicker {
+  display: inline-block;
+  background: rgba(249, 178, 51, 0.15);
+  color: var(--brand-gold);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 14px;
+  margin: 20px 0 28px;
+  flex-wrap: wrap;
+}
+
+.stat-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 14px;
+}
+
+.stat-card {
+  background: var(--glass);
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.stat-label {
+  margin: 4px 0 0;
+  color: var(--brand-gray);
+  font-size: 12px;
+}
+
+.hero-panel {
+  background: linear-gradient(160deg, rgba(30, 34, 48, 0.9), rgba(12, 14, 20, 0.95));
+  border-radius: 24px;
+  padding: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: var(--shadow-soft);
+}
+
+.panel-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 24px;
+  margin: 0;
+}
+
+.panel-sub {
+  margin: 6px 0 20px;
+  color: var(--brand-gray);
+}
+
+.panel-list {
+  display: grid;
+  gap: 14px;
+}
+
+.panel-item {
+  background: var(--glass);
+  border-radius: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  animation: fadeUp 0.5s ease forwards;
+  opacity: 0;
+}
+
+.panel-item-title {
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.panel-item-text {
+  color: var(--brand-gray);
+  font-size: 13px;
+  margin: 0;
+}
+
+.panel-item-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 12px;
+  color: var(--brand-gray);
+  gap: 4px;
+}
+
+.section {
+  padding: 48px;
+}
+
+.section.alt {
+  background: linear-gradient(180deg, rgba(18, 20, 27, 0.8), rgba(8, 10, 14, 0.9));
+}
+
+.section-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 28px;
+}
+
+.section-header h2 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 32px;
+  margin: 0;
+}
+
+.section-header p {
+  margin: 0;
+  color: var(--brand-gray);
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.feature-card {
+  background: var(--glass);
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  animation: fadeUp 0.45s ease forwards;
+  opacity: 0;
+}
+
+.school-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+}
+
+.school-card {
+  background: var(--glass);
+  padding: 20px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.school-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.school-name {
+  font-weight: 700;
+  margin: 0;
+}
+
+.school-meta {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--brand-gray);
+}
+
+.school-badge {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(225, 29, 46, 0.2);
+  color: var(--brand-white);
+  font-size: 12px;
+}
+
+.school-details p {
+  margin: 4px 0;
+  font-size: 13px;
+  color: var(--brand-gray);
+}
+
+.school-photo {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 14px;
+  font-size: 12px;
+  color: var(--brand-gray);
+}
+
+.story-grid,
+.media-grid,
+.sponsor-grid,
+.about-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+.story-card,
+.media-card,
+.sponsor-card,
+.about-card {
+  background: var(--glass);
+  padding: 20px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.story-tag {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(249, 178, 51, 0.2);
+  color: var(--brand-gold);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.story-card h3 {
+  margin: 12px 0 8px;
+}
+
+.forum-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 24px;
+}
+
+.forum-board {
+  display: grid;
+  gap: 14px;
+}
+
+.forum-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  background: var(--glass);
+  padding: 16px 20px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  align-items: center;
+}
+
+.forum-title {
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+
+.forum-desc {
+  margin: 0;
+  color: var(--brand-gray);
+  font-size: 13px;
+}
+
+.forum-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--brand-gray);
+  font-size: 12px;
+}
+
+.forum-sidebar {
+  display: grid;
+  gap: 16px;
+}
+
+.sidebar-card {
+  background: var(--glass);
+  padding: 20px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-card ul {
+  padding-left: 18px;
+  color: var(--brand-gray);
+  font-size: 13px;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.filters input,
+.filters select {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: var(--brand-white);
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+.sponsor-price {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 8px 0 12px;
+}
+
+.sponsor-card ul,
+.sponsor-card li {
+  color: var(--brand-gray);
+  font-size: 13px;
+}
+
+.ad-slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.ad-slot {
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  padding: 20px;
+  border-radius: 14px;
+  color: var(--brand-gray);
+  text-align: center;
+}
+
+.site-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 48px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(8, 10, 14, 0.9);
+}
+
+.footer-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 20px;
+  margin: 0 0 6px;
+}
+
+.footer-links {
+  display: flex;
+  gap: 10px;
+}
+
+.about-grid p {
+  color: var(--brand-gray);
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 980px) {
+  .site-header {
+    flex-direction: column;
+    gap: 18px;
+    align-items: flex-start;
+  }
+
+  .forum-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .hero {
+    padding: 48px 28px;
+  }
+
+  .section,
+  .site-footer {
+    padding: 32px 24px;
+  }
+}
+
+@media (max-width: 640px) {
+  .brand {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .forum-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .forum-meta {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
