@@ -179,6 +179,10 @@ const [voiceCommandText, setVoiceCommandText] = useState('');
 const [voiceCommandPreview, setVoiceCommandPreview] = useState(null);
 const [voiceCommandError, setVoiceCommandError] = useState('');
 const [isVoiceListening, setIsVoiceListening] = useState(false);
+const [sharedGameImport, setSharedGameImport] = useState(null);
+const [sharedGameImportStatus, setSharedGameImportStatus] = useState('');
+const [isLoadingSharedGame, setIsLoadingSharedGame] = useState(false);
+const [isSharingGameLink, setIsSharingGameLink] = useState(false);
 const [showOnboarding, setShowOnboarding] = useState(() => {
   if (typeof window === 'undefined') return false;
   return !window.localStorage.getItem('pitchtrace_onboarding_seen');
@@ -726,6 +730,13 @@ const shareOrCopyLink = async (title, url) => {
   window.prompt('Copy this link:', url);
 };
 
+const getShareApiUrl = () => {
+  if (Capacitor.isNativePlatform()) {
+    return 'https://pitchtrace.com/.netlify/functions/share-game';
+  }
+  return `${window.location.origin}/.netlify/functions/share-game`;
+};
+
 const getCountFromPitches = (pitches) => {
 let strikes = 0;
 let strikesSoFar = 0;
@@ -792,6 +803,41 @@ if (reportParam) {
     setView('report');
   }
 }
+}, []);
+
+useEffect(() => {
+  const sharedGameParam = new URLSearchParams(window.location.search).get('sharedGame');
+  if (!sharedGameParam) return;
+
+  let cancelled = false;
+  const loadSharedGame = async () => {
+    setIsLoadingSharedGame(true);
+    setSharedGameImportStatus('');
+    try {
+      const response = await fetch(`${getShareApiUrl()}?id=${encodeURIComponent(sharedGameParam)}`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || 'Could not load that shared game.');
+      }
+      if (cancelled) return;
+      setSharedGameImport(data);
+      setShowCoverPage(false);
+      setView('landing');
+    } catch (error) {
+      if (cancelled) return;
+      setSharedGameImport(null);
+      setSharedGameImportStatus(error.message || 'Could not load that shared game.');
+    } finally {
+      if (!cancelled) {
+        setIsLoadingSharedGame(false);
+      }
+    }
+  };
+
+  loadSharedGame();
+  return () => {
+    cancelled = true;
+  };
 }, []);
 
 useEffect(() => {
@@ -1414,6 +1460,32 @@ const link = `${window.location.origin}?report=${id}`;
 if (navigator.clipboard?.writeText) {
   navigator.clipboard.writeText(link);
 }
+};
+
+const shareGameLink = async (game) => {
+  if (!game) return;
+  setIsSharingGameLink(true);
+  setSharedGameImportStatus('');
+  try {
+    const payload = buildSharedGamePayload(game);
+    const response = await fetch(getShareApiUrl(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.error || 'Could not create a share link for that game.');
+    }
+    await shareOrCopyLink('PitchTrace Shared Game', data.url);
+    setSharedGameImportStatus('Shared game link copied.');
+  } catch (error) {
+    setSharedGameImportStatus(error.message || 'Could not create a share link for that game.');
+  } finally {
+    setIsSharingGameLink(false);
+  }
 };
 
 const saveReportOpponentName = () => {
@@ -2134,6 +2206,62 @@ const buildAllDataPayload = () => {
   };
 };
 
+const rewriteGamePitcherReferences = (game, idMap = {}) => {
+  const nextPitcherId = idMap[game?.pitcherId] ?? game?.pitcherId;
+  const nextStarterId = idMap[game?.starterPitcherId] ?? game?.starterPitcherId;
+  return {
+    ...game,
+    pitcherId: nextPitcherId,
+    starterPitcherId: nextStarterId,
+    state: game?.state ? {
+      ...game.state,
+      currentPitcherId: idMap[game.state.currentPitcherId] ?? game.state.currentPitcherId
+    } : game?.state,
+    innings: (game?.innings || []).map((inning) => ({
+      ...inning,
+      atBats: (inning.atBats || []).map((atBat) => ({
+        ...atBat,
+        pitcherId: idMap[atBat?.pitcherId] ?? atBat?.pitcherId
+      }))
+    }))
+  };
+};
+
+const buildSharedGamePayload = (baseGame) => {
+  const groupEntries = getGameReportGroupEntries(baseGame).filter((entry) => getPitcherOwnedPitchTotal(entry.game) > 0);
+  const sourcePitchers = baseGame?.scouting ? loadScoutPitchers() : pitchers;
+  const sourceById = Object.fromEntries(sourcePitchers.map((pitcher) => [String(pitcher.id), pitcher]));
+  return {
+    exportType: 'shared-game',
+    exportedAt: new Date().toISOString(),
+    scouting: Boolean(baseGame?.scouting),
+    baseGameId: baseGame?.id,
+    opponent: baseGame?.opponent || '',
+    games: groupEntries.map((entry) => {
+      const pitcher = sourceById[String(entry.pitcherId)];
+      return {
+        pitcher: pitcher ? {
+          id: pitcher.id,
+          name: pitcher.name || '',
+          number: pitcher.number || '',
+          handedness: pitcher.handedness || '',
+          role: pitcher.role || '',
+          pitchTypes: Array.isArray(pitcher.pitchTypes) ? pitcher.pitchTypes : []
+        } : {
+          id: entry.pitcherId,
+          name: entry.pitcherName || '',
+          number: '',
+          handedness: '',
+          role: '',
+          pitchTypes: []
+        },
+        game: entry.game
+      };
+    }),
+    report: generateGameReport(baseGame)
+  };
+};
+
 const gameKey = (g) => {
   const opponent = (g.opponent || '').trim().toLowerCase();
   const date = g.date || '';
@@ -2315,6 +2443,77 @@ const handleImportAllData = (importText = rosterImportText) => {
   localStorage.setItem('baseball_reports', JSON.stringify(existingReports));
 
   setRosterShareMessage('Data imported. Duplicates were skipped.');
+};
+
+const importSharedGamePayload = (payload) => {
+  if (!payload || !Array.isArray(payload.games) || payload.games.length === 0) {
+    setSharedGameImportStatus('That shared game is missing its data.');
+    return;
+  }
+
+  const targetType = payload.scouting ? 'scout' : 'team';
+  const existingRoster = targetType === 'scout' ? [...loadScoutPitchers()] : [...pitchers];
+  const existingKeys = new Map(existingRoster.map((pitcher) => [normalizeRosterKey(pitcher), pitcher.id]));
+  const importedIdMap = {};
+
+  payload.games.forEach((entry) => {
+    const pitcher = entry.pitcher || {};
+    const key = normalizeRosterKey(pitcher);
+    if (!key) return;
+    if (!existingKeys.has(key)) {
+      const newId = Date.now() + Math.random();
+      existingRoster.push({
+        id: newId,
+        name: pitcher.name || '',
+        number: pitcher.number || '',
+        handedness: pitcher.handedness || '',
+        role: pitcher.role || '',
+        pitchTypes: Array.isArray(pitcher.pitchTypes) ? pitcher.pitchTypes : []
+      });
+      existingKeys.set(key, newId);
+    }
+    importedIdMap[pitcher.id] = existingKeys.get(key);
+  });
+
+  if (targetType === 'scout') {
+    saveScoutPitchers(existingRoster);
+  } else {
+    savePitchers(existingRoster);
+  }
+
+  const storageKey = targetType === 'scout' ? 'baseball_scout_games' : 'baseball_games';
+  const allGames = readGameStore(storageKey);
+
+  payload.games.forEach((entry) => {
+    const pitcher = entry.pitcher || {};
+    const localPitcherId = importedIdMap[pitcher.id];
+    if (!localPitcherId) return;
+    const rewrittenGame = rewriteGamePitcherReferences(entry.game, importedIdMap);
+    const current = allGames[localPitcherId] || [];
+    const currentKeys = new Set(current.map(gameKey));
+    const incomingKey = gameKey(rewrittenGame);
+    if (!incomingKey || currentKeys.has(incomingKey)) return;
+    allGames[localPitcherId] = [...current, rewrittenGame];
+  });
+
+  localStorage.setItem(storageKey, JSON.stringify(allGames));
+
+  if (payload.report) {
+    const storedReports = JSON.parse(localStorage.getItem('baseball_reports') || '{}');
+    storedReports[`shared-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`] = payload.report;
+    localStorage.setItem('baseball_reports', JSON.stringify(storedReports));
+  }
+
+  setSharedGameImportStatus('Shared game imported into Game Log.');
+  setSharedGameImport(null);
+  if (typeof window !== 'undefined') {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('sharedGame');
+    window.history.replaceState({}, '', url.toString());
+  }
+  if (view === 'game-log' || view === 'landing') {
+    setView('game-log');
+  }
 };
 
 const downloadTextFile = (filename, text) => {
@@ -3913,12 +4112,52 @@ return (
 }
 
 const printPreviewMarkup = printPreview ? buildPrintableDocument(printPreview.title, printPreview.html, false) : '';
+const sharedGameImportModal = sharedGameImport ? (
+  <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div className="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+      <div className="text-white text-xl font-semibold mb-2">Import Shared Game</div>
+      <div className="text-slate-400 text-sm mb-4">
+        This link includes a shared game report and game log data.
+      </div>
+      <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-4 mb-4">
+        <div className="text-white font-medium">
+          {sharedGameImport?.opponent || 'Unknown Opponent'}
+        </div>
+        <div className="text-slate-400 text-sm mt-1">
+          {sharedGameImport?.games?.length || 0} pitcher appearance{sharedGameImport?.games?.length === 1 ? '' : 's'} • {sharedGameImport?.scouting ? 'Opponent' : 'My Team'}
+        </div>
+      </div>
+      <div className="flex flex-col sm:flex-row gap-3">
+        <button
+          onClick={() => importSharedGamePayload(sharedGameImport)}
+          className="flex-1 h-12 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-900 font-semibold transition-all"
+        >
+          Import to Game Log
+        </button>
+        <button
+          onClick={() => {
+            setSharedGameImport(null);
+            if (typeof window !== 'undefined') {
+              const url = new URL(window.location.href);
+              url.searchParams.delete('sharedGame');
+              window.history.replaceState({}, '', url.toString());
+            }
+          }}
+          className="flex-1 h-12 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium transition-all"
+        >
+          Not Now
+        </button>
+      </div>
+    </div>
+  </div>
+) : null;
 
 // Landing Page
 if (view === 'landing') {
 return (
 <div className={`min-h-screen relative overflow-hidden ${appClass}`} style={appStyle}>
 <BroadcastStyle />
+{sharedGameImportModal}
 <div
 className="absolute inset-0 bg-cover bg-center bg-no-repeat"
 style={{
@@ -7191,6 +7430,7 @@ const gameLogItems = getAllRecentGames().filter((item) => item.side === homeTeam
 return (
 <div className={`${shellClass} p-4 sm:p-6 ${appClass}`} style={appStyle}>
 <BroadcastStyle />
+{sharedGameImportModal}
 <div className="w-full md:max-w-6xl mx-auto px-3 sm:px-4 md:px-6">
   <Breadcrumbs text={getBreadcrumbs()} />
   <div className="mb-4"><ModeBadge /></div>
@@ -7387,6 +7627,7 @@ const reportPitchTypes = reportPitcher ? getPitchTypesFromGames(reportPitcherGam
 return (
 <div className={`${shellClass} p-4 sm:p-6 ${appClass}`} style={appStyle}>
 <BroadcastStyle />
+{sharedGameImportModal}
 <div className="w-full w-full w-full md:max-w-6xl mx-auto px-3 sm:px-4 md:px-6 px-2 sm:px-0 px-2 sm:px-0">
   <Breadcrumbs text={getBreadcrumbs()} />
   <div className="mb-4"><ModeBadge /></div>
@@ -7399,10 +7640,10 @@ return (
     </button>
     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
       <button
-        onClick={() => shareOrCopyLink('PitchTrace Report', shareLink)}
+        onClick={() => reportGame ? shareGameLink(reportGame) : shareOrCopyLink('PitchTrace Report', shareLink)}
         className="w-full sm:w-auto px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white text-sm"
       >
-        Copy Share Link
+        {isSharingGameLink ? 'Sharing...' : 'Copy Share Link'}
       </button>
       <button
         onClick={() => printElementContent('PitchTrace Pitch Log', pitchLogPrintRef)}
@@ -7418,6 +7659,12 @@ return (
       </button>
     </div>
   </div>
+
+  {sharedGameImportStatus ? (
+    <div className="mb-4 rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
+      {sharedGameImportStatus}
+    </div>
+  ) : null}
 
   <div className="mb-4 rounded-2xl border border-slate-700/60 bg-slate-900/60 p-3">
     <div className="text-white text-sm font-semibold mb-2">Report Color Legend</div>
