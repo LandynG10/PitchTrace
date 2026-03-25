@@ -4055,7 +4055,7 @@ backgroundImage: "url('/mnt/user-data/uploads/Screenshot_2025-11-16_165624.png')
       </div>
       <h1 className="text-3xl sm:text-5xl lg:text-6xl font-bold text-white mb-2 drop-shadow-2xl tracking-tight">PitchTrace</h1>
       <p className="text-sm sm:text-xl text-white/90 mb-5 drop-shadow-lg font-light">
-          Track every pitch. Analyze every game. Elevate your team.
+          Track every pitch. Analyze every game. Elevate your team. Built for game day.
         </p>
         <div className="flex justify-center mb-5">
           <div className="inline-flex rounded-full border border-white/20 bg-slate-900/55 p-1 backdrop-blur">
