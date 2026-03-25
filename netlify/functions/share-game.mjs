@@ -75,7 +75,10 @@ export async function handler(event) {
       return buildResponse(200, payload);
     } catch (error) {
       console.error('share-game GET failed', error);
-      return buildResponse(500, { error: error.message || 'Could not load shared game.' });
+      return buildResponse(500, {
+        error: `Could not load shared game: ${error?.message || 'unknown error'}`,
+        supabaseHost: url || 'missing'
+      });
     }
   }
 
@@ -115,6 +118,9 @@ export async function handler(event) {
     });
   } catch (error) {
     console.error('share-game POST failed', error);
-    return buildResponse(500, { error: `Could not save shared game: ${error.message || 'unknown error'}` });
+    return buildResponse(500, {
+      error: `Could not save shared game: ${error?.message || 'unknown error'}`,
+      supabaseHost: url || 'missing'
+    });
   }
 }
