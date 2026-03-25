@@ -625,6 +625,11 @@ const buildPrintableDocument = (title, html, autoPrint = false) => {
         <title>${title}</title>
         ${headMarkup}
         <style>
+          * {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            box-sizing: border-box;
+          }
           body {
             margin: 0;
             min-height: auto;
@@ -645,6 +650,15 @@ const buildPrintableDocument = (title, html, autoPrint = false) => {
             .print-shell {
               padding: 0;
               max-width: none;
+            }
+            .overflow-hidden {
+              overflow: visible !important;
+            }
+            .pitch-log-export-card,
+            .pitch-log-ab,
+            .pitch-log-table {
+              break-inside: avoid-page;
+              page-break-inside: avoid;
             }
           }
         </style>
@@ -667,15 +681,15 @@ const buildPrintableDocument = (title, html, autoPrint = false) => {
 };
 
 const openPrintableDocument = (title, html) => {
-  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+  const printableHtml = buildPrintableDocument(title, html, true);
+  const blob = new Blob([printableHtml], { type: 'text/html' });
+  const blobUrl = URL.createObjectURL(blob);
+  const printWindow = window.open(blobUrl, '_blank', 'noopener,noreferrer');
   if (!printWindow) {
     window.print();
     return;
   }
-
-  printWindow.document.open();
-  printWindow.document.write(buildPrintableDocument(title, html, true));
-  printWindow.document.close();
+  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
 };
 
 const exportPrintableContent = async (title, html) => {
@@ -698,6 +712,36 @@ const exportPrintableContent = async (title, html) => {
   }
 
   openPrintableDocument(title, html);
+};
+
+const savePrintableContentToFile = async (title, html) => {
+  const printableHtml = buildPrintableDocument(title, html, false);
+  const safeName = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const file = new File([printableHtml], `${safeName}.html`, { type: 'text/html' });
+
+  if (navigator.share) {
+    try {
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          title,
+          files: [file]
+        });
+        return;
+      }
+    } catch {
+      // Fall through to download fallback.
+    }
+  }
+
+  const blob = new Blob([printableHtml], { type: 'text/html;charset=utf-8' });
+  const blobUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.download = `${safeName}.html`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(blobUrl);
 };
 
 const printElementContent = (title, ref) => {
@@ -5265,6 +5309,14 @@ return (
             >
               Print / Save
             </button>
+            {printPreview?.title === 'PitchTrace Pitch Log' ? (
+              <button
+                onClick={() => savePrintableContentToFile(printPreview.title, printPreview.html)}
+                className="px-4 py-2 bg-amber-400 hover:bg-amber-300 rounded-lg text-slate-900 text-sm font-semibold"
+              >
+                Save to Files
+              </button>
+            ) : null}
             <button
               onClick={() => setPrintPreview(null)}
               className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-white text-sm"
@@ -8058,7 +8110,7 @@ return (
               const inningPitches = pitcherAtBats.reduce((sum, ab) => sum + getTrackedAtBatPitchCount(ab), 0) || 0;
               if (pitcherAtBats.length === 0) return null;
               return (
-              <div key={`${entry.game.id}-${inning.number}-${inningIdx}`} className="rounded-2xl border border-slate-200 overflow-hidden">
+              <div key={`${entry.game.id}-${inning.number}-${inningIdx}`} className="pitch-log-export-card rounded-2xl border border-slate-200 overflow-hidden">
                 <div className="bg-slate-100 px-4 py-3 flex items-center justify-between">
                   <div>
                     <div className="text-lg font-semibold">Inning {inning.number}</div>
@@ -8068,7 +8120,7 @@ return (
                 </div>
                 <div className="divide-y divide-slate-200">
                   {pitcherAtBats.map((atBat, idx) => (
-                    <div key={`${entry.game.id}-${inning.number}-${idx}`} className="p-4 grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4 items-start">
+                    <div key={`${entry.game.id}-${inning.number}-${idx}`} className="pitch-log-ab p-4 grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4 items-start">
                       <div className="space-y-2">
                         <div>
                           <div className="text-sm font-semibold text-slate-900">{getAtBatHitterLabel(atBat)}</div>
@@ -8080,7 +8132,7 @@ return (
                           At-Bat Outcome: {formatAtBatOutcomeLabel(atBat)}
                         </div>
                       </div>
-                      <div className="rounded-xl border border-slate-200 overflow-hidden">
+                      <div className="pitch-log-table rounded-xl border border-slate-200 overflow-hidden">
                         <div className="hidden sm:grid grid-cols-[72px_56px_88px_1fr_92px_82px] gap-3 bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                           <div>Inning</div>
                           <div>Pitch</div>
