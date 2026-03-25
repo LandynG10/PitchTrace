@@ -741,6 +741,49 @@ const getShareApiBase = () => {
 
 const getShareApiUrl = () => `${getShareApiBase()}/.netlify/functions/share-game`;
 
+const getSharedImportFingerprint = (payload) => {
+  const firstGame = payload?.games?.[0]?.game;
+  return [
+    payload?.baseGameId || 'no-base',
+    payload?.exportedAt || 'no-export',
+    payload?.opponent || 'unknown',
+    firstGame?.date || 'no-date',
+    payload?.scouting ? 'scout' : 'team'
+  ].join('::');
+};
+
+const readImportedSharedGameFingerprints = () => {
+  if (typeof window === 'undefined') return [];
+  try {
+    return JSON.parse(window.localStorage.getItem('pitchtrace_imported_shared_games') || '[]');
+  } catch {
+    return [];
+  }
+};
+
+const saveImportedSharedGameFingerprint = (fingerprint) => {
+  if (!fingerprint || typeof window === 'undefined') return;
+  const current = new Set(readImportedSharedGameFingerprints());
+  current.add(fingerprint);
+  window.localStorage.setItem('pitchtrace_imported_shared_games', JSON.stringify([...current]));
+};
+
+const getFriendlySharedGameError = (message, action = 'load') => {
+  const text = String(message || '').toLowerCase();
+  if (text.includes('shared game not found')) {
+    return 'That share link is invalid, expired, or no longer available.';
+  }
+  if (text.includes('fetch failed') || text.includes('load failed')) {
+    return action === 'save'
+      ? 'Could not create the share link right now. Please try again in a moment.'
+      : 'Could not load that shared game right now. Please try the link again in a moment.';
+  }
+  if (text.includes('missing share id')) {
+    return 'That share link is incomplete.';
+  }
+  return message || (action === 'save' ? 'Could not create a share link for that game.' : 'Could not load that shared game.');
+};
+
 const getCountFromPitches = (pitches) => {
 let strikes = 0;
 let strikesSoFar = 0;
@@ -830,7 +873,7 @@ useEffect(() => {
     } catch (error) {
       if (cancelled) return;
       setSharedGameImport(null);
-      setSharedGameImportStatus(error.message || 'Could not load that shared game.');
+      setSharedGameImportStatus(getFriendlySharedGameError(error.message, 'load'));
     } finally {
       if (!cancelled) {
         setIsLoadingSharedGame(false);
@@ -1484,9 +1527,9 @@ const shareGameLink = async (game) => {
       throw new Error(data?.error || 'Could not create a share link for that game.');
     }
     await shareOrCopyLink('PitchTrace Shared Game', data.url);
-    setSharedGameImportStatus('Shared game link copied.');
+    setSharedGameImportStatus('Share link ready. Open it on another device to import this game into Game Log.');
   } catch (error) {
-    setSharedGameImportStatus(error.message || 'Could not create a share link for that game.');
+    setSharedGameImportStatus(getFriendlySharedGameError(error.message, 'save'));
   } finally {
     setIsSharingGameLink(false);
   }
@@ -2455,6 +2498,13 @@ const importSharedGamePayload = (payload) => {
     return;
   }
 
+  const sharedFingerprint = getSharedImportFingerprint(payload);
+  if (readImportedSharedGameFingerprints().includes(sharedFingerprint)) {
+    setSharedGameImportStatus('That shared game was already imported into Game Log.');
+    setSharedGameImport(null);
+    return;
+  }
+
   const targetType = payload.scouting ? 'scout' : 'team';
   const existingRoster = targetType === 'scout' ? [...loadScoutPitchers()] : [...pitchers];
   const existingKeys = new Map(existingRoster.map((pitcher) => [normalizeRosterKey(pitcher), pitcher.id]));
@@ -2487,20 +2537,33 @@ const importSharedGamePayload = (payload) => {
 
   const storageKey = targetType === 'scout' ? 'baseball_scout_games' : 'baseball_games';
   const allGames = readGameStore(storageKey);
+  let addedGames = 0;
 
   payload.games.forEach((entry) => {
     const pitcher = entry.pitcher || {};
     const localPitcherId = importedIdMap[pitcher.id];
     if (!localPitcherId) return;
-    const rewrittenGame = rewriteGamePitcherReferences(entry.game, importedIdMap);
+    const rewrittenGame = {
+      ...rewriteGamePitcherReferences(entry.game, importedIdMap),
+      sharedImport: true,
+      sharedImportFingerprint: sharedFingerprint
+    };
     const current = allGames[localPitcherId] || [];
     const currentKeys = new Set(current.map(gameKey));
     const incomingKey = gameKey(rewrittenGame);
     if (!incomingKey || currentKeys.has(incomingKey)) return;
     allGames[localPitcherId] = [...current, rewrittenGame];
+    addedGames += 1;
   });
 
+  if (addedGames === 0) {
+    setSharedGameImportStatus('That shared game is already in Game Log. Duplicates were skipped.');
+    setSharedGameImport(null);
+    return;
+  }
+
   localStorage.setItem(storageKey, JSON.stringify(allGames));
+  saveImportedSharedGameFingerprint(sharedFingerprint);
 
   if (payload.report) {
     const storedReports = JSON.parse(localStorage.getItem('baseball_reports') || '{}');
@@ -2508,7 +2571,7 @@ const importSharedGamePayload = (payload) => {
     localStorage.setItem('baseball_reports', JSON.stringify(storedReports));
   }
 
-  setSharedGameImportStatus('Shared game imported into Game Log.');
+  setSharedGameImportStatus(`Game imported to Game Log. Added ${addedGames} pitcher appearance${addedGames === 1 ? '' : 's'}.`);
   setSharedGameImport(null);
   if (typeof window !== 'undefined') {
     const url = new URL(window.location.href);
@@ -4121,14 +4184,33 @@ const sharedGameImportModal = sharedGameImport ? (
     <div className="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
       <div className="text-white text-xl font-semibold mb-2">Import Shared Game</div>
       <div className="text-slate-400 text-sm mb-4">
-        This link includes a shared game report and game log data.
+        This link includes a shared game report and pitch-by-pitch game data.
       </div>
       <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-4 mb-4">
-        <div className="text-white font-medium">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-white font-medium">
+            {sharedGameImport?.opponent || 'Unknown Opponent'}
+          </div>
+          <div className={`text-[10px] uppercase tracking-wider px-2 py-1 rounded-full border ${
+            sharedGameImport?.scouting
+              ? 'border-cyan-400/40 text-cyan-200 bg-cyan-400/10'
+              : 'border-violet-300/30 text-violet-100 bg-violet-300/10'
+          }`}>
+            {sharedGameImport?.scouting ? 'Opponent' : 'My Team'}
+          </div>
+        </div>
+        <div className="text-slate-300 text-sm mt-2">
           {sharedGameImport?.opponent || 'Unknown Opponent'}
         </div>
         <div className="text-slate-400 text-sm mt-1">
-          {sharedGameImport?.games?.length || 0} pitcher appearance{sharedGameImport?.games?.length === 1 ? '' : 's'} • {sharedGameImport?.scouting ? 'Opponent' : 'My Team'}
+          {(sharedGameImport?.games?.[0]?.game?.date && !Number.isNaN(new Date(sharedGameImport.games[0].game.date).getTime()))
+            ? new Date(sharedGameImport.games[0].game.date).toLocaleDateString()
+            : 'Date unavailable'}
+          {' • '}
+          {sharedGameImport?.games?.length || 0} pitcher appearance{sharedGameImport?.games?.length === 1 ? '' : 's'}
+        </div>
+        <div className="text-slate-500 text-xs mt-2">
+          Importing will add this game to your Game Log and skip duplicate entries if it was already imported.
         </div>
       </div>
       <div className="flex flex-col sm:flex-row gap-3">
@@ -4468,8 +4550,15 @@ backgroundImage: "url('/mnt/user-data/uploads/Screenshot_2025-11-16_165624.png')
                         }`}
                       >
                         <div className="flex items-center justify-between gap-3">
-                          <div className="text-white text-sm font-medium">
-                            {item.game.opponent || 'Unknown'}
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="text-white text-sm font-medium truncate">
+                              {item.game.opponent || 'Unknown'}
+                            </div>
+                            {item.game.sharedImport ? (
+                              <div className="text-[10px] uppercase tracking-wider px-2 py-1 rounded-full border border-amber-400/40 text-amber-200 bg-amber-400/10">
+                                Shared Import
+                              </div>
+                            ) : null}
                           </div>
                           <div className={`text-[10px] uppercase tracking-wider px-2 py-1 rounded-full border ${
                             item.side === 'opponent'
@@ -7479,8 +7568,15 @@ return (
         >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-white font-medium">
-                {item.game.opponent || 'Unknown'}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="text-white font-medium">
+                  {item.game.opponent || 'Unknown'}
+                </div>
+                {item.game.sharedImport ? (
+                  <div className="text-[10px] uppercase tracking-wider px-2 py-1 rounded-full border border-amber-400/40 text-amber-200 bg-amber-400/10">
+                    Shared Import
+                  </div>
+                ) : null}
               </div>
               <div className="text-white/60 text-xs mt-1">
                 Starter: {item.starterPitcherName || item.pitcherName} • {new Date(item.game.date).toLocaleDateString()}
