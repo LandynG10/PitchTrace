@@ -44,6 +44,7 @@ export async function handler(event) {
       }
       return buildResponse(200, payload);
     } catch (error) {
+      console.error('share-game GET failed', error);
       return buildResponse(500, { error: error.message || 'Could not load shared game.' });
     }
   }
@@ -59,7 +60,7 @@ export async function handler(event) {
     }
 
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    await store.set(id, JSON.stringify(payload), {
+    await store.setJSON(id, payload, {
       metadata: {
         exportType: payload.exportType || 'shared-game',
         opponent: payload.opponent || 'Unknown',
@@ -73,6 +74,7 @@ export async function handler(event) {
       url: `${baseUrl}?sharedGame=${id}`
     });
   } catch (error) {
-    return buildResponse(500, { error: error.message || 'Could not save shared game.' });
+    console.error('share-game POST failed', error);
+    return buildResponse(500, { error: `Could not save shared game: ${error.message || 'unknown error'}` });
   }
 }
