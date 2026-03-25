@@ -730,79 +730,16 @@ const shareOrCopyLink = async (title, url) => {
   window.prompt('Copy this link:', url);
 };
 
-const getSupabaseShareConfig = () => {
-  const url = (import.meta.env.VITE_SUPABASE_URL || '').trim().replace(/\/$/, '');
-  const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
-  return {
-    url,
-    anonKey,
-    configured: Boolean(url && anonKey)
-  };
+const getShareApiBase = () => {
+  if (typeof window === 'undefined') return 'https://pitchtrace.com';
+  const { origin, protocol } = window.location;
+  if (protocol === 'http:' || protocol === 'https:') {
+    return origin.replace(/\/$/, '');
+  }
+  return 'https://pitchtrace.com';
 };
 
-const createShareId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-
-const createSupabaseSharedGame = async (payload) => {
-  const { url, anonKey, configured } = getSupabaseShareConfig();
-  if (!configured) {
-    throw new Error('Supabase sharing is not configured yet.');
-  }
-
-  const shareId = createShareId();
-  const response = await fetch(`${url}/rest/v1/shared_games`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: anonKey,
-      Authorization: `Bearer ${anonKey}`,
-      Prefer: 'return=representation'
-    },
-    body: JSON.stringify({
-      share_id: shareId,
-      opponent: payload?.opponent || 'Unknown',
-      scouting: Boolean(payload?.scouting),
-      payload
-    })
-  });
-
-  const responseText = await response.text();
-  if (!response.ok) {
-    throw new Error(responseText || 'Could not save shared game to Supabase.');
-  }
-
-  return `${window.location.origin}?sharedGame=${shareId}`;
-};
-
-const fetchSupabaseSharedGame = async (shareId) => {
-  const { url, anonKey, configured } = getSupabaseShareConfig();
-  if (!configured) {
-    throw new Error('Supabase sharing is not configured yet.');
-  }
-
-  const query = new URLSearchParams({
-    select: 'payload',
-    share_id: `eq.${shareId}`,
-    limit: '1'
-  });
-  const response = await fetch(`${url}/rest/v1/shared_games?${query.toString()}`, {
-    headers: {
-      apikey: anonKey,
-      Authorization: `Bearer ${anonKey}`
-    }
-  });
-
-  const responseText = await response.text();
-  if (!response.ok) {
-    throw new Error(responseText || 'Could not load shared game from Supabase.');
-  }
-
-  const data = responseText ? JSON.parse(responseText) : [];
-  const record = Array.isArray(data) ? data[0] : null;
-  if (!record?.payload) {
-    throw new Error('Shared game not found.');
-  }
-  return record.payload;
-};
+const getShareApiUrl = () => `${getShareApiBase()}/.netlify/functions/share-game`;
 
 const getCountFromPitches = (pitches) => {
 let strikes = 0;
@@ -881,7 +818,11 @@ useEffect(() => {
     setIsLoadingSharedGame(true);
     setSharedGameImportStatus('');
     try {
-      const data = await fetchSupabaseSharedGame(sharedGameParam);
+      const response = await fetch(`${getShareApiUrl()}?id=${encodeURIComponent(sharedGameParam)}`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || 'Could not load that shared game.');
+      }
       if (cancelled) return;
       setSharedGameImport(data);
       setShowCoverPage(false);
@@ -1531,8 +1472,18 @@ const shareGameLink = async (game) => {
   setSharedGameImportStatus('');
   try {
     const payload = buildSharedGamePayload(game);
-    const url = await createSupabaseSharedGame(payload);
-    await shareOrCopyLink('PitchTrace Shared Game', url);
+    const response = await fetch(getShareApiUrl(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.error || 'Could not create a share link for that game.');
+    }
+    await shareOrCopyLink('PitchTrace Shared Game', data.url);
     setSharedGameImportStatus('Shared game link copied.');
   } catch (error) {
     setSharedGameImportStatus(error.message || 'Could not create a share link for that game.');

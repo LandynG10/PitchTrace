@@ -1,5 +1,3 @@
-import { getStore } from '@netlify/blobs';
-
 const buildResponse = (statusCode, body) => ({
   statusCode,
   headers: {
@@ -17,6 +15,22 @@ const buildBaseUrl = (event) => {
   return `${proto}://${host}`;
 };
 
+const getSupabaseConfig = () => {
+  const url = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
+  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+  return {
+    url,
+    anonKey,
+    configured: Boolean(url && anonKey)
+  };
+};
+
+const buildSupabaseHeaders = (anonKey) => ({
+  'Content-Type': 'application/json',
+  apikey: anonKey,
+  Authorization: `Bearer ${anonKey}`
+});
+
 export async function handler(event) {
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -29,7 +43,10 @@ export async function handler(event) {
     };
   }
 
-  const store = getStore('pitchtrace-shared-games');
+  const { url, anonKey, configured } = getSupabaseConfig();
+  if (!configured) {
+    return buildResponse(500, { error: 'Supabase environment variables are not configured on Netlify.' });
+  }
 
   if (event.httpMethod === 'GET') {
     const id = event.queryStringParameters?.id;
@@ -38,7 +55,20 @@ export async function handler(event) {
     }
 
     try {
-      const payload = await store.get(id, { type: 'json' });
+      const query = new URLSearchParams({
+        select: 'payload',
+        share_id: `eq.${id}`,
+        limit: '1'
+      });
+      const response = await fetch(`${url}/rest/v1/shared_games?${query.toString()}`, {
+        headers: buildSupabaseHeaders(anonKey)
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        throw new Error(text || 'Could not load shared game from Supabase.');
+      }
+      const data = text ? JSON.parse(text) : [];
+      const payload = Array.isArray(data) ? data[0]?.payload : null;
       if (!payload) {
         return buildResponse(404, { error: 'Shared game not found.' });
       }
@@ -60,13 +90,23 @@ export async function handler(event) {
     }
 
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    await store.setJSON(id, payload, {
-      metadata: {
-        exportType: payload.exportType || 'shared-game',
-        opponent: payload.opponent || 'Unknown',
-        scouting: String(Boolean(payload.scouting))
-      }
+    const response = await fetch(`${url}/rest/v1/shared_games`, {
+      method: 'POST',
+      headers: {
+        ...buildSupabaseHeaders(anonKey),
+        Prefer: 'return=representation'
+      },
+      body: JSON.stringify({
+        share_id: id,
+        opponent: payload?.opponent || 'Unknown',
+        scouting: Boolean(payload?.scouting),
+        payload
+      })
     });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(text || 'Could not save shared game to Supabase.');
+    }
 
     const baseUrl = buildBaseUrl(event);
     return buildResponse(200, {
