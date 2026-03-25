@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="PitchTrace favicon">
+  <rect width="64" height="64" rx="14" fill="#0f172a" />
+  <circle cx="32" cy="32" r="20" fill="#f8fafc" />
+  <path
+    d="M20 19c4 4 6 8 6 13s-2 9-6 13"
+    fill="none"
+    stroke="#06b6d4"
+    stroke-linecap="round"
+    stroke-width="3"
+  />
+  <path
+    d="M44 19c-4 4-6 8-6 13s2 9 6 13"
+    fill="none"
+    stroke="#06b6d4"
+    stroke-linecap="round"
+    stroke-width="3"
+  />
+  <path
+    d="M18 46c10-7 19-10 28-10"
+    fill="none"
+    stroke="#f97316"
+    stroke-linecap="round"
+    stroke-width="3.5"
+  />
+  <circle cx="47" cy="35" r="3.5" fill="#f97316" />
+</svg>
