@@ -57,7 +57,36 @@ const Breadcrumbs = ({ text }) => (
 );
 
 const shellClass = 'min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white';
+const readDisplayPrefs = () => {
+  if (typeof window === 'undefined') {
+    return {
+      theme: 'cyan',
+      fontSize: 'normal',
+      highContrast: false,
+      reduceMotion: false
+    };
+  }
+  try {
+    const stored = JSON.parse(window.localStorage.getItem('pitchtrace_display_prefs') || '{}');
+    const safeTheme = stored.theme === 'rose' ? 'indigo' : (stored.theme || 'cyan');
+    return {
+      theme: safeTheme,
+      fontSize: stored.fontSize || 'normal',
+      highContrast: Boolean(stored.highContrast),
+      reduceMotion: Boolean(stored.reduceMotion)
+    };
+  } catch {
+    return {
+      theme: 'cyan',
+      fontSize: 'normal',
+      highContrast: false,
+      reduceMotion: false
+    };
+  }
+};
+
 const BSBL101 = () => {
+const displayPrefs = readDisplayPrefs();
 const [pitchers, setPitchers] = useState([]);
 const [selectedPitcher, setSelectedPitcher] = useState(null);
 const [games, setGames] = useState([]);
@@ -68,6 +97,7 @@ const [currentBatterHandedness, setCurrentBatterHandedness] = useState('R');
 const [atBatPitches, setAtBatPitches] = useState([]);
 const [selectedZone, setSelectedZone] = useState(null);
 const [pitchTrail, setPitchTrail] = useState([]);
+const [pitchCountBaseline, setPitchCountBaseline] = useState(0);
 const [view, setView] = useState('landing');
 const [seasonStats, setSeasonStats] = useState(null);
 const [pendingPitch, setPendingPitch] = useState(null);
@@ -101,6 +131,7 @@ const [reportGame, setReportGame] = useState(null);
 const [reportPitcher, setReportPitcher] = useState(null);
 const [reportSprayFilter, setReportSprayFilter] = useState(null);
 const [reportBackView, setReportBackView] = useState('landing');
+const [dashboardBackView, setDashboardBackView] = useState('team-dashboard');
 const [reportOpponentDraft, setReportOpponentDraft] = useState('');
 const [oneHandMode, setOneHandMode] = useState(false);
 const [showPitchEffectiveness, setShowPitchEffectiveness] = useState(false);
@@ -115,10 +146,10 @@ const [isScouting, setIsScouting] = useState(false);
 const [pendingOpponent, setPendingOpponent] = useState('');
 const [showHomeMenu, setShowHomeMenu] = useState(false);
 const [showAdvancedTools, setShowAdvancedTools] = useState(false);
-const [theme, setTheme] = useState('cyan');
-const [fontSize, setFontSize] = useState('normal');
-const [highContrast, setHighContrast] = useState(false);
-const [reduceMotion, setReduceMotion] = useState(false);
+const [theme, setTheme] = useState(displayPrefs.theme);
+const [fontSize, setFontSize] = useState(displayPrefs.fontSize);
+const [highContrast, setHighContrast] = useState(displayPrefs.highContrast);
+const [reduceMotion, setReduceMotion] = useState(displayPrefs.reduceMotion);
 const [bullpenSessions, setBullpenSessions] = useState([]);
 const [dashboardMode, setDashboardMode] = useState('live');
 const [showContinueModal, setShowContinueModal] = useState(false);
@@ -148,13 +179,16 @@ const [voiceCommandText, setVoiceCommandText] = useState('');
 const [voiceCommandPreview, setVoiceCommandPreview] = useState(null);
 const [voiceCommandError, setVoiceCommandError] = useState('');
 const [isVoiceListening, setIsVoiceListening] = useState(false);
-const [aiBackendUrl, setAiBackendUrl] = useState(() => localStorage.getItem('pitchtrace_ai_backend_url') || '');
-const [openAiApiKey, setOpenAiApiKey] = useState(() => localStorage.getItem('pitchtrace_openai_api_key') || '');
-const [aiAssistEnabled, setAiAssistEnabled] = useState(() => localStorage.getItem('pitchtrace_ai_assist_enabled') === 'true');
-const [isAiResolving, setIsAiResolving] = useState(false);
-const [aiAssistStatus, setAiAssistStatus] = useState('');
+const [showOnboarding, setShowOnboarding] = useState(() => {
+  if (typeof window === 'undefined') return false;
+  return !window.localStorage.getItem('pitchtrace_onboarding_seen');
+});
+const [onboardingStep, setOnboardingStep] = useState(0);
 const teamReportPrintRef = useRef(null);
 const gameReportPrintRef = useRef(null);
+const pitchLogPrintRef = useRef(null);
+const salesPrintRef = useRef(null);
+const compliancePrintRef = useRef(null);
 const recentGameHoldTimerRef = useRef(null);
 const recentGameHoldTriggeredRef = useRef(false);
 const voiceRecognitionRef = useRef(null);
@@ -184,7 +218,6 @@ const isScoutContext = isScouting || scoutingMode;
 const themePalettes = {
   cyan: { primary: '#22d3ee', accent: '#f59e0b' },
   emerald: { primary: '#10b981', accent: '#f59e0b' },
-  rose: { primary: '#f43f5e', accent: '#f59e0b' },
   indigo: { primary: '#6366f1', accent: '#22d3ee' },
   amber: { primary: '#f59e0b', accent: '#22d3ee' }
 };
@@ -192,7 +225,6 @@ const themePalettes = {
 const themeOptions = [
   { id: 'cyan', label: 'Cyan', swatch: '#22d3ee' },
   { id: 'emerald', label: 'Emerald', swatch: '#10b981' },
-  { id: 'rose', label: 'Rose', swatch: '#f43f5e' },
   { id: 'indigo', label: 'Indigo', swatch: '#6366f1' },
   { id: 'amber', label: 'Amber', swatch: '#f59e0b' }
 ];
@@ -213,7 +245,7 @@ const appClass = `app-theme ${highContrast ? 'app-contrast' : ''} ${reduceMotion
 
 const autosaveKey = isScouting ? 'baseball_autosave_scout' : 'baseball_autosave';
 
-const outcomes = ['1B', '2B', '3B', 'HR', 'BB', 'HBP', 'K', 'E', 'SAC', 'DP', 'OUT'];
+const outcomes = ['1B', '2B', '3B', 'HR', 'HBP', 'E', 'SAC', 'DP', 'OUT'];
 const defensiveResultPresets = {
   OUT: ['6-3', '5-3', '4-3', 'F7', 'F8', 'F9', 'P3', 'K'],
   E: ['E5', 'E6', 'E4', 'E3', 'E1', 'E7', 'E8', 'E9'],
@@ -288,6 +320,10 @@ const normalizeVoiceText = (value = '') => (
     .replace(/\bcan you hear me\b/g, ' ')
     .replace(/\bokay\b/g, ' ')
     .replace(/\bbut\b/g, ' ')
+    .replace(/\band play\b/g, ' in play ')
+    .replace(/\bn play\b/g, ' in play ')
+    .replace(/\bon play\b/g, ' in play ')
+    .replace(/\bair\b/g, ' error ')
     .replace(/\bball and play\b/g, ' ball in play ')
     .replace(/\bball n play\b/g, ' ball in play ')
     .replace(/\bball on play\b/g, ' ball in play ')
@@ -343,6 +379,7 @@ const detectVoiceBallLocation = (text) => {
   if (text.includes('down') || text.includes('low')) return 'Down';
   if (text.includes('up') || text.includes('high')) return 'Up';
   if (text.includes('away') || text.includes('outside')) return 'Away';
+  if ((text.includes(' and ') || text.startsWith('and ') || text.endsWith(' and')) && !text.includes('swing and miss') && !text.includes('ball in play')) return 'In';
   if (text.includes(' in ') || text.startsWith('in ') || text.endsWith(' in') || text.includes('inside')) return 'In';
   return null;
 };
@@ -434,6 +471,13 @@ const detectVoiceDefensiveDetail = (text) => {
   return null;
 };
 
+const detectVoiceVelocity = (rawValue = '') => {
+  const lower = rawValue.toLowerCase();
+  const explicitMatch = lower.match(/\b(\d{2,3}(?:\.\d)?)\s*(?:mph|mp h|m p h|mile per hour|miles per hour)\b/);
+  if (explicitMatch) return explicitMatch[1];
+  return null;
+};
+
 const parseVoiceCommand = (rawValue, allowedPitchTypes = [], options = {}) => {
   const text = normalizeVoiceText(rawValue);
   if (!text) {
@@ -446,6 +490,7 @@ const parseVoiceCommand = (rawValue, allowedPitchTypes = [], options = {}) => {
   const hitLocation = detectVoiceHitLocation(text);
   const ballLocation = detectVoiceBallLocation(text);
   const defensiveDetail = detectVoiceDefensiveDetail(text);
+  const velocity = detectVoiceVelocity(rawValue);
   const mentionsBallInPlayPhrase = text.includes('ball in play');
   const mentionsBall = (hasStandaloneWord(text, 'ball') || hasStandaloneWord(text, 'miss')) && !mentionsBallInPlayPhrase;
   const mentionsStrike = text.includes('strike') || text.includes('called') || text.includes('looking') || text.includes('swinging') || text.includes('foul');
@@ -464,7 +509,8 @@ const parseVoiceCommand = (rawValue, allowedPitchTypes = [], options = {}) => {
       strikeType: inferredOutcome === 'K' ? (strikeType || 'Swinging') : (['1B', '2B', '3B', 'HR', 'OUT', 'E', 'SAC', 'DP'].includes(inferredOutcome) ? 'In Play' : null),
       ballType: inferredOutcome === 'HBP' ? 'HBP' : ballLocation,
       detail: ['1B', '2B', '3B', 'HR'].includes(inferredOutcome) ? hitLocation : defensiveDetail,
-      summary: [pitchType, inferredOutcome, hitLocation || defensiveDetail].filter(Boolean).join(' • ')
+      velocity,
+      summary: [pitchType, velocity ? `${velocity} mph` : null, inferredOutcome, hitLocation || defensiveDetail].filter(Boolean).join(' • ')
     };
   }
 
@@ -474,7 +520,8 @@ const parseVoiceCommand = (rawValue, allowedPitchTypes = [], options = {}) => {
       pitchType,
       isStrike: true,
       strikeType: 'In Play',
-      summary: [pitchType, 'In Play'].join(' • ')
+      velocity,
+      summary: [pitchType, velocity ? `${velocity} mph` : null, 'In Play'].filter(Boolean).join(' • ')
     };
   }
 
@@ -488,7 +535,8 @@ const parseVoiceCommand = (rawValue, allowedPitchTypes = [], options = {}) => {
       pitchType,
       isStrike: false,
       ballType: ballLocation || 'Away',
-      summary: [pitchType, 'Ball', ballLocation || 'Away'].filter(Boolean).join(' • ')
+      velocity,
+      summary: [pitchType, velocity ? `${velocity} mph` : null, 'Ball', ballLocation || 'Away'].filter(Boolean).join(' • ')
     };
   }
 
@@ -499,7 +547,8 @@ const parseVoiceCommand = (rawValue, allowedPitchTypes = [], options = {}) => {
       pitchType,
       isStrike: true,
       strikeType: resolvedStrikeType,
-      summary: [pitchType, resolvedStrikeType === 'In Play' ? 'In Play' : `${resolvedStrikeType} Strike`].join(' • ')
+      velocity,
+      summary: [pitchType, velocity ? `${velocity} mph` : null, resolvedStrikeType === 'In Play' ? 'In Play' : `${resolvedStrikeType} Strike`].filter(Boolean).join(' • ')
     };
   }
 
@@ -712,18 +761,6 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
-  localStorage.setItem('pitchtrace_ai_backend_url', aiBackendUrl);
-}, [aiBackendUrl]);
-
-useEffect(() => {
-  localStorage.setItem('pitchtrace_openai_api_key', openAiApiKey);
-}, [openAiApiKey]);
-
-useEffect(() => {
-  localStorage.setItem('pitchtrace_ai_assist_enabled', aiAssistEnabled ? 'true' : 'false');
-}, [aiAssistEnabled]);
-
-useEffect(() => {
   if (view !== 'pitch-entry' || !currentGame || currentGame.isBullpen) return;
   const lineup = normalizeLineup(currentGame.lineup);
   const hasCompleteLineup = lineup.every((spot) => spot.name.trim());
@@ -768,6 +805,16 @@ if (selectedPitcher) {
 }, [selectedPitcher]);
 
 useEffect(() => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem('pitchtrace_display_prefs', JSON.stringify({
+    theme,
+    fontSize,
+    highContrast,
+    reduceMotion
+  }));
+}, [theme, fontSize, highContrast, reduceMotion]);
+
+useEffect(() => {
   if (!currentGame || currentGame.isBullpen) {
     saveAutosave();
     return;
@@ -778,6 +825,7 @@ useEffect(() => {
     currentOuts,
     currentBatterHandedness,
     atBatPitches,
+    pitchCountBaseline,
     selectedZone,
     pitchTrail,
     currentBases,
@@ -801,7 +849,7 @@ useEffect(() => {
   localStorage.setItem(storageKey, JSON.stringify(allGames));
   setGames(updatedGames);
 // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [currentInning, currentBatter, currentOuts, currentBatterHandedness, atBatPitches, selectedZone, pitchTrail, currentBases, totalRunsAllowed]);
+}, [currentInning, currentBatter, currentOuts, currentBatterHandedness, atBatPitches, pitchCountBaseline, selectedZone, pitchTrail, currentBases, totalRunsAllowed]);
 
 
 const saveAutosave = () => {
@@ -814,6 +862,7 @@ const saveAutosave = () => {
     currentBatter,
     currentBatterHandedness,
     atBatPitches,
+    pitchCountBaseline,
     currentOuts,
     pitchTrail,
     selectedZone,
@@ -828,6 +877,47 @@ const clearAutosave = () => {
   localStorage.removeItem(autosaveKey);
 };
 
+const sameCalendarDay = (firstDate, secondDate) => (
+  new Date(firstDate || '').toDateString() === new Date(secondDate || '').toDateString()
+);
+
+const sameOpponentLabel = (firstOpponent, secondOpponent) => (
+  String(firstOpponent || '').trim().toLowerCase() === String(secondOpponent || '').trim().toLowerCase()
+);
+
+const buildAtBatSignature = (atBat, inningNumber, idx) => {
+  const pitchSignature = (atBat?.pitches || [])
+    .map((pitch) => `${pitch.type}:${pitch.isStrike ? 'S' : 'B'}:${pitch.strikeType || pitch.ballType || ''}:${pitch.zone || ''}:${pitch.velocity || ''}`)
+    .join('|');
+  return [
+    inningNumber,
+    atBat?.batter || idx,
+    atBat?.batterName || '',
+    atBat?.batterNumber || '',
+    atBat?.outcome || '',
+    atBat?.outDetails || '',
+    pitchSignature
+  ].join('::');
+};
+
+const getGameAtBatSignatureSet = (game) => {
+  const signatures = new Set();
+  (game?.innings || []).forEach((inning) => {
+    (inning.atBats || []).forEach((atBat, idx) => {
+      signatures.add(buildAtBatSignature(atBat, inning.number, idx));
+    });
+  });
+  return signatures;
+};
+
+const signatureSetsOverlap = (leftSet, rightSet) => {
+  if (!leftSet?.size || !rightSet?.size) return false;
+  for (const signature of leftSet) {
+    if (rightSet.has(signature)) return true;
+  }
+  return false;
+};
+
 const isSameGameGroup = (baseGame, candidateGame) => {
   const baseGroupId = baseGame?.gameGroupId || baseGame?.id;
   const candidateGroupId = candidateGame?.gameGroupId || candidateGame?.id;
@@ -835,8 +925,8 @@ const isSameGameGroup = (baseGame, candidateGame) => {
     return baseGroupId === candidateGroupId;
   }
   return (
-    new Date(baseGame?.date || '').toDateString() === new Date(candidateGame?.date || '').toDateString() &&
-    (baseGame?.opponent || '').toLowerCase() === (candidateGame?.opponent || '').toLowerCase()
+    sameCalendarDay(baseGame?.date, candidateGame?.date) &&
+    sameOpponentLabel(baseGame?.opponent, candidateGame?.opponent)
   );
 };
 
@@ -869,12 +959,98 @@ const getGameReportGroupEntries = (game) => {
         entries.push({
           pitcherId: String(pid),
           pitcherName: pitcher?.name || g.pitcherName || 'Unknown',
-          game: g
+          game: g,
+          signatureSet: getGameAtBatSignatureSet(g)
         });
       }
     });
   });
-  return entries.sort((a, b) => new Date(a.game.date).getTime() - new Date(b.game.date).getTime());
+  const hasRealGroupId = entries.some((entry) => entry.game?.gameGroupId);
+  const baseStarterId = String(game?.starterPitcherId || '');
+  const baseStarterName = String(game?.starterPitcherName || '').trim().toLowerCase();
+  const sameStarter = (entry) => {
+    const candidateStarterId = String(entry.game?.starterPitcherId || '');
+    const candidateStarterName = String(entry.game?.starterPitcherName || '').trim().toLowerCase();
+    return (
+      (baseStarterId && candidateStarterId && baseStarterId === candidateStarterId) ||
+      (baseStarterName && candidateStarterName && baseStarterName === candidateStarterName)
+    );
+  };
+
+  let groupedEntries = entries;
+  if (!hasRealGroupId) {
+    const acceptedEntries = [];
+    const acceptedIds = new Set();
+    const mergedSignatures = new Set(getGameAtBatSignatureSet(game));
+    const seedEntry = entries.find((entry) => String(entry.game?.id) === String(game?.id));
+    if (seedEntry) {
+      acceptedEntries.push(seedEntry);
+      acceptedIds.add(String(seedEntry.game?.id));
+      seedEntry.signatureSet.forEach((signature) => mergedSignatures.add(signature));
+    }
+
+    let changed = true;
+    while (changed) {
+      changed = false;
+      entries.forEach((entry) => {
+        const entryId = String(entry.game?.id);
+        if (acceptedIds.has(entryId)) return;
+        const overlapsAccepted = signatureSetsOverlap(entry.signatureSet, mergedSignatures);
+        if (sameStarter(entry) || overlapsAccepted) {
+          acceptedEntries.push(entry);
+          acceptedIds.add(entryId);
+          entry.signatureSet.forEach((signature) => mergedSignatures.add(signature));
+          changed = true;
+        }
+      });
+    }
+
+    groupedEntries = acceptedEntries.length > 0 ? acceptedEntries : entries;
+  }
+
+  const sortedEntries = groupedEntries.sort((a, b) => {
+    const aTime = new Date(a.game.updatedAt || a.game.date || 0).getTime();
+    const bTime = new Date(b.game.updatedAt || b.game.date || 0).getTime();
+    if (aTime !== bTime) return aTime - bTime;
+    return Number(a.game.id || 0) - Number(b.game.id || 0);
+  });
+  const seenAtBats = new Set();
+
+  return sortedEntries.map((entry) => {
+    const exclusiveInnings = (entry.game.innings || [])
+      .map((inning) => {
+        const atBats = (inning.atBats || []).map((atBat, idx) => {
+          const signature = buildAtBatSignature(atBat, inning.number, idx);
+          if (seenAtBats.has(signature)) return null;
+          return {
+            ...atBat,
+            pitcherId: atBat?.pitcherId ?? entry.pitcherId,
+            pitcherName: atBat?.pitcherName || entry.pitcherName
+          };
+        }).filter(Boolean);
+        return atBats.length ? { ...inning, atBats } : null;
+      })
+      .filter(Boolean);
+
+    exclusiveInnings.forEach((inning) => {
+      (inning.atBats || []).forEach((atBat, idx) => {
+        seenAtBats.add(buildAtBatSignature(atBat, inning.number, idx));
+      });
+    });
+
+    return {
+      ...entry,
+      game: {
+        ...entry.game,
+        innings: exclusiveInnings
+      }
+    };
+  }).filter((entry) => {
+    const pitcherOwnedGame = getPitcherOwnedGame(entry.game);
+    entry.game = pitcherOwnedGame;
+    const totalTrackedPitches = getPitcherOwnedPitchTotal(pitcherOwnedGame);
+    return totalTrackedPitches > 0;
+  });
 };
 
 const getCompactGameStats = (game) => {
@@ -910,6 +1086,39 @@ const getAtBatHitterLabel = (atBat) => {
   if (name) return name;
   if (number) return `#${number}`;
   return `Batter ${atBat?.batter || '--'}`;
+};
+
+const doesAtBatBelongToGamePitcher = (atBat, game) => {
+  if (!atBat || !game) return true;
+  if (atBat.pitcherId !== undefined && atBat.pitcherId !== null) {
+    return String(atBat.pitcherId) === String(game.pitcherId);
+  }
+  return String(game.starterPitcherId || game.pitcherId) === String(game.pitcherId);
+};
+
+const getPitcherOwnedInnings = (game) => (
+  (game?.innings || [])
+    .map((inning) => {
+      const atBats = (inning.atBats || []).filter((atBat) => doesAtBatBelongToGamePitcher(atBat, game));
+      return atBats.length ? { ...inning, atBats } : null;
+    })
+    .filter(Boolean)
+);
+
+const getPitcherOwnedGame = (game) => ({
+  ...game,
+  innings: getPitcherOwnedInnings(game)
+});
+
+const getPitcherOwnedPitchTotal = (game) => (
+  getPitcherOwnedInnings(game).reduce((sum, inning) => {
+    return sum + (inning.atBats || []).reduce((atBatSum, atBat) => atBatSum + getTrackedAtBatPitchCount(atBat), 0);
+  }, 0)
+);
+
+const formatAtBatOutcomeLabel = (atBat) => {
+  if (!atBat) return '--';
+  return atBat.outDetails ? `${atBat.outcome} • ${atBat.outDetails}` : atBat.outcome;
 };
 
 const getRunsAllowedFromGame = (game) => {
@@ -1398,7 +1607,6 @@ useEffect(() => () => {
 const clearVoiceCommandState = () => {
   setVoiceCommandPreview(null);
   setVoiceCommandError('');
-  setAiAssistStatus('');
 };
 
 const previewVoiceCommand = (inputValue = voiceCommandText) => {
@@ -1420,150 +1628,6 @@ const previewVoiceCommand = (inputValue = voiceCommandText) => {
   return parsed;
 };
 
-const runAiAssistForVoiceCommand = async (inputValue = voiceCommandText) => {
-  const transcript = inputValue.trim();
-  if (!transcript) {
-    setVoiceCommandError('Say or type a pitch command first.');
-    return null;
-  }
-
-  setIsAiResolving(true);
-  setAiAssistStatus('AI is cleaning up the transcript...');
-  setVoiceCommandError('');
-
-  const schema = {
-    type: 'object',
-    additionalProperties: false,
-    required: ['cleaned_transcript', 'pitch_type', 'mode', 'is_strike', 'strike_type', 'ball_type', 'outcome', 'detail', 'confidence'],
-    properties: {
-      cleaned_transcript: { type: 'string' },
-      pitch_type: { type: 'string' },
-      mode: { type: 'string', enum: ['pitch', 'result', 'unknown'] },
-      is_strike: { type: 'string', enum: ['true', 'false', 'unknown'] },
-      strike_type: { type: 'string' },
-      ball_type: { type: 'string' },
-      outcome: { type: 'string' },
-      detail: { type: 'string' },
-      confidence: { type: 'number' }
-    }
-  };
-
-  try {
-    const backendTargets = [];
-    if (aiBackendUrl.trim()) {
-      backendTargets.push(aiBackendUrl.trim());
-    }
-    backendTargets.push('/.netlify/functions/ai-smart-input', '/api/ai-smart-input');
-
-    let response = null;
-    for (const target of backendTargets) {
-      try {
-        response = await fetch(target, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            transcript,
-            allowedPitchTypes: selectedPitcher?.pitchTypes || [],
-            context: {
-              current_count: getCount(),
-              current_batter: currentBatter,
-              note: 'Return one command only. If the transcript is only a pitch call, set mode=pitch. If it clearly finishes the at-bat, set mode=result.'
-            }
-          })
-        });
-        if (response.ok) break;
-      } catch {
-        response = null;
-      }
-    }
-
-    if ((!response || !response.ok) && openAiApiKey.trim()) {
-      response = await fetch('https://api.openai.com/v1/responses', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${openAiApiKey.trim()}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4.1-mini',
-          input: [
-            {
-              role: 'system',
-              content: [
-                {
-                  type: 'input_text',
-                  text: 'You normalize baseball pitch-tracking voice transcripts into one structured command. Fix speech-to-text mistakes when obvious. Use only the allowed pitch types if possible. "Ball in play" is contact, not a ball. Convert fielding shorthand like 63 to 6-3 and 643 to 6-4-3. Return unknown values as empty strings or "unknown".'
-                }
-              ]
-            },
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'input_text',
-                  text: JSON.stringify({
-                    transcript,
-                    allowed_pitch_types: selectedPitcher?.pitchTypes || [],
-                    current_count: getCount(),
-                    current_batter: currentBatter,
-                    note: 'Return one command only. If the transcript is only a pitch call, set mode=pitch. If it clearly finishes the at-bat, set mode=result.'
-                  })
-                }
-              ]
-            }
-          ],
-          text: {
-            format: {
-              type: 'json_schema',
-              name: 'pitchtrace_voice_command',
-              strict: true,
-              schema
-            }
-          }
-        })
-      });
-    }
-
-    if (!response || !response.ok) {
-      throw new Error(openAiApiKey.trim()
-        ? `AI request failed${response ? ` (${response.status})` : ''}`
-        : 'AI Assist needs a backend URL or a fallback API key.');
-    }
-
-    const data = await response.json();
-    const rawText =
-      data.output_text ||
-      data.output?.flatMap((item) => item.content || []).find((item) => item.type === 'output_text')?.text ||
-      '';
-    const parsedJson = JSON.parse(rawText);
-    const cleanedTranscript = parsedJson.cleaned_transcript || transcript;
-    setVoiceCommandText(cleanedTranscript);
-
-    const localParsed = parseVoiceCommand(cleanedTranscript, selectedPitcher?.pitchTypes || [], {
-      allowResultWithoutPitchType: atBatPitches.length > 0
-    });
-
-    if (localParsed?.error) {
-      setVoiceCommandPreview(null);
-      setVoiceCommandError('AI cleaned the phrase, but I still could not turn it into a command.');
-      setAiAssistStatus('');
-      return null;
-    }
-
-    setVoiceCommandPreview(localParsed);
-    setAiAssistStatus(`AI Assist ready (${Math.round((parsedJson.confidence || 0) * 100)}%)`);
-    return localParsed;
-  } catch (error) {
-    setVoiceCommandError(error.message || 'AI Assist could not process that transcript.');
-    setAiAssistStatus('');
-    return null;
-  } finally {
-    setIsAiResolving(false);
-  }
-};
-
 const applyVoiceCommand = (parsedAction = voiceCommandPreview) => {
   if (!parsedAction) return;
 
@@ -1572,12 +1636,15 @@ const applyVoiceCommand = (parsedAction = voiceCommandPreview) => {
       parsedAction.pitchType,
       parsedAction.isStrike,
       parsedAction.isStrike ? parsedAction.strikeType : null,
-      !parsedAction.isStrike ? parsedAction.ballType : null
+      !parsedAction.isStrike ? parsedAction.ballType : null,
+      null,
+      parsedAction.velocity || null
     );
   } else if (parsedAction.kind === 'result') {
     setActionHistory([...actionHistory, {
       type: 'voiceResult',
       atBatPitches: [...atBatPitches],
+      pitchCountBaseline,
       currentBatter,
       currentInning,
       currentOuts,
@@ -1588,7 +1655,7 @@ const applyVoiceCommand = (parsedAction = voiceCommandPreview) => {
     }]);
 
     if (parsedAction.pitchType) {
-      const velocity = currentVelocity.trim();
+      const velocity = parsedAction.velocity || currentVelocity.trim();
       const appendedPitch = {
         type: parsedAction.pitchType,
         isStrike: parsedAction.outcome === 'BB' || parsedAction.outcome === 'HBP' ? false : true,
@@ -1632,13 +1699,7 @@ const toggleVoiceListening = () => {
     const transcript = event.results?.[0]?.[0]?.transcript || '';
     setVoiceCommandText(transcript);
     setVoiceCommandError('');
-    setTimeout(() => {
-      if (aiAssistEnabled && openAiApiKey.trim()) {
-        runAiAssistForVoiceCommand(transcript);
-      } else {
-        previewVoiceCommand(transcript);
-      }
-    }, 0);
+    setTimeout(() => previewVoiceCommand(transcript), 0);
   };
   recognition.onerror = () => {
     setVoiceCommandError('Mic capture failed. You can still type the command below.');
@@ -2257,7 +2318,8 @@ const handleImportAllData = (importText = rosterImportText) => {
 };
 
 const downloadTextFile = (filename, text) => {
-  const blob = new Blob([text], { type: 'application/json' });
+  const type = filename.toLowerCase().endsWith('.csv') ? 'text/csv;charset=utf-8' : 'application/json';
+  const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -2266,6 +2328,91 @@ const downloadTextFile = (filename, text) => {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+};
+
+const shareTextFile = async (filename, text) => {
+  if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') {
+    return false;
+  }
+
+  try {
+    const type = filename.toLowerCase().endsWith('.csv') ? 'text/csv;charset=utf-8' : 'application/json';
+    const file = new File([text], filename, { type });
+    const payload = {
+      title: filename,
+      files: [file]
+    };
+
+    if (typeof navigator.canShare === 'function' && !navigator.canShare({ files: [file] })) {
+      return false;
+    }
+
+    await navigator.share(payload);
+    return true;
+  } catch (error) {
+    if (error?.name === 'AbortError') return true;
+    return false;
+  }
+};
+
+const escapeCsvCell = (value) => {
+  const stringValue = value === null || value === undefined ? '' : String(value);
+  if (/[",\n]/.test(stringValue)) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+  return stringValue;
+};
+
+const buildPitchByPitchCsv = (reportGame, reportEntries) => {
+  const headers = [
+    'Game Date',
+    'Opponent',
+    'Pitcher',
+    'Inning',
+    'Batter Spot',
+    'Batter Name',
+    'Batter Number',
+    'Batter Handedness',
+    'At-Bat Outcome',
+    'Pitch Number',
+    'Pitch Type',
+    'Pitch Result',
+    'Pitch Location',
+    'Velocity',
+    'Out Detail'
+  ];
+
+  const rows = [];
+  reportEntries.forEach((entry) => {
+    (entry.game.innings || []).forEach((inning) => {
+      (inning.atBats || []).forEach((atBat) => {
+        (atBat.pitches || []).forEach((pitch, pitchIdx) => {
+          rows.push([
+            reportGame?.date ? new Date(reportGame.date).toLocaleDateString('en-US') : '',
+            reportGame?.opponent || '',
+            entry.pitcherName || '',
+            inning.number || '',
+            atBat?.batter || '',
+            atBat?.batterName || '',
+            atBat?.batterNumber || '',
+            atBat?.batterHandedness || '',
+            formatAtBatOutcomeLabel(atBat),
+            pitchIdx + 1,
+            pitch?.type || '',
+            getPitchResultLabel(pitch),
+            getPitchLocationLabel(pitch),
+            pitch?.velocity || '',
+            atBat?.outDetails || ''
+          ]);
+        });
+      });
+    });
+  });
+
+  return [
+    headers.map(escapeCsvCell).join(','),
+    ...rows.map((row) => row.map(escapeCsvCell).join(','))
+  ].join('\n');
 };
 
 const handleDownloadShareFile = () => {
@@ -2278,6 +2425,32 @@ const handleDownloadShareFile = () => {
     : `pitch-tracker-all-data-${stamp}.json`;
   downloadTextFile(filename, JSON.stringify(payload, null, 2));
   setRosterShareMessage(shareContent === 'roster' ? 'Roster JSON downloaded.' : 'Data JSON downloaded.');
+};
+
+const handleNativeShareFile = async () => {
+  const payload = shareContent === 'roster'
+    ? buildRosterPayload(rosterShareType)
+    : buildAllDataPayload();
+  const stamp = new Date().toISOString().slice(0, 10);
+  const filename = shareContent === 'roster'
+    ? `pitchtrace-${rosterShareType}-roster-${stamp}.json`
+    : `pitchtrace-all-data-${stamp}.json`;
+  const text = JSON.stringify(payload, null, 2);
+  const shared = await shareTextFile(filename, text);
+
+  if (shared) {
+    setRosterShareMessage(shareContent === 'roster' ? 'Roster file shared.' : 'Data file shared.');
+  } else {
+    downloadTextFile(filename, text);
+    setRosterShareMessage('Native share is not available here, so the file was downloaded instead.');
+  }
+};
+
+const shareOrDownloadTextFile = async (filename, text) => {
+  const shared = await shareTextFile(filename, text);
+  if (!shared) {
+    downloadTextFile(filename, text);
+  }
 };
 
 const handleImportFile = async (event) => {
@@ -2372,6 +2545,7 @@ const continueGameWithPitcher = (pitcher, game) => {
   setCurrentOuts(state.currentOuts || 0);
   setCurrentBatterHandedness(game.lineup?.[(state.currentBatter || 1) - 1]?.handedness || state.currentBatterHandedness || 'R');
   setAtBatPitches(state.atBatPitches || []);
+  setPitchCountBaseline(state.pitchCountBaseline || 0);
   setPitchTrail(state.pitchTrail || []);
   setSelectedZone(state.selectedZone || null);
   setCurrentBases(cloneBases(state.currentBases));
@@ -2382,15 +2556,19 @@ const continueGameWithPitcher = (pitcher, game) => {
   setView('pitch-entry');
 };
 
-const openPitcherDashboard = (pitcher) => {
+const openPitcherDashboard = (pitcher, backView = 'team-dashboard') => {
   setSelectedPitcher(pitcher);
   setDashboardMode('live');
+  setDashboardBackView(backView);
   setView('dashboard');
 };
 
 const getBreadcrumbs = () => {
   const map = {
     landing: 'Home',
+    help: 'Home / Help & Settings',
+    sales: 'Home / Sales',
+    compliance: 'Home / NCAA Handout',
     rotation: 'Home / Team Rotation',
     'scouting-rotation': 'Home / Scouting',
     'team-dashboard': 'Home / Season Dashboard',
@@ -2402,6 +2580,131 @@ const getBreadcrumbs = () => {
     report: 'Home / Report'
   };
   return map[view] || 'Home';
+};
+
+const onboardingSteps = [
+  {
+    eyebrow: 'Quick Start',
+    title: 'Track in four taps.',
+    body: 'Start simple: pick a pitch type, choose strike or ball, add the result, then move to the next hitter.'
+  },
+  {
+    eyebrow: 'Home Modes',
+    title: 'Keep team and opponent work separate.',
+    body: 'Use My Team for your own pitchers, Opponent for scouting, and Execution Pen for bullpen-only sessions.'
+  },
+  {
+    eyebrow: 'Game Speed',
+    title: 'Stay in one screen.',
+    body: 'Use the tap guide, Smart Input, and the sticky scoreboard so you can log fast without scrolling around.'
+  },
+  {
+    eyebrow: 'Reports',
+    title: 'Track first, review later.',
+    body: 'Recent Games keeps open games ready to resume. Game Log holds finished work, reports, and edits.'
+  }
+];
+
+const dismissOnboarding = () => {
+  setShowOnboarding(false);
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem('pitchtrace_onboarding_seen', '1');
+  }
+};
+
+const reopenOnboarding = () => {
+  setOnboardingStep(0);
+  setShowOnboarding(true);
+};
+
+const getLatestLoggedAtBat = (game = currentGame) => {
+  const innings = [...(game?.innings || [])].reverse();
+  for (const inning of innings) {
+    const atBat = [...(inning.atBats || [])].reverse().find(Boolean);
+    if (atBat) return atBat;
+  }
+  return null;
+};
+
+const getLatestLoggedAtBatReference = (game = currentGame) => {
+  const innings = game?.innings || [];
+  for (let inningIndex = innings.length - 1; inningIndex >= 0; inningIndex -= 1) {
+    const atBats = innings[inningIndex]?.atBats || [];
+    for (let atBatIndex = atBats.length - 1; atBatIndex >= 0; atBatIndex -= 1) {
+      if (atBats[atBatIndex]) {
+        return { inningIndex, atBatIndex, atBat: atBats[atBatIndex] };
+      }
+    }
+  }
+  return null;
+};
+
+const getUndoSummary = () => {
+  if (actionHistory.length === 0) return 'Undo';
+  const lastAction = actionHistory[actionHistory.length - 1];
+
+  if (lastAction.type === 'pitch') {
+    const latestPitch = atBatPitches[atBatPitches.length - 1];
+    if (!latestPitch) return 'Undo Last Pitch';
+    const detail = latestPitch.isStrike
+      ? latestPitch.strikeType || 'Strike'
+      : latestPitch.ballType === 'HBP'
+        ? 'Hit By Pitch'
+        : `${latestPitch.ballType || 'Ball'}`;
+    return `Undo: ${latestPitch.type} ${detail}`;
+  }
+
+  if (lastAction.type === 'completeAtBat' || lastAction.type === 'voiceResult') {
+    const lastAtBat = getLatestLoggedAtBat();
+    if (!lastAtBat) return 'Undo Last Result';
+    return `Undo: ${lastAtBat.outcome}${lastAtBat.outDetails ? ` ${lastAtBat.outDetails}` : ''}`;
+  }
+
+  if (lastAction.type === 'nextBatter') return 'Undo: Next Batter';
+  return 'Undo Last Action';
+};
+
+const voiceCorrectionTokens = {
+  result: ['called strike', 'swinging strike', 'foul ball', 'ball', 'in play'],
+  location: ['up', 'away', 'in', 'down'],
+  outcome: ['out', 'single', 'double', 'triple', 'home run', 'error', 'double play', 'sac', 'hit by pitch'],
+  detail: ['6-3', '5-3', '4-3', '1-3', 'left field', 'center field', 'right field', 'left center', 'right center']
+};
+
+const applyVoiceCorrectionToken = (token) => {
+  const nextText = `${voiceCommandText || ''} ${token}`.trim();
+  setVoiceCommandText(nextText);
+  clearVoiceCommandState();
+  setTimeout(() => previewVoiceCommand(nextText), 0);
+};
+
+const getModeBadge = () => {
+  if (view === 'bullpen') {
+    return { label: 'Bullpen', className: 'border-amber-400/30 text-amber-200 bg-amber-400/10' };
+  }
+  if (view === 'pitch-entry') {
+    const isOpponentGame = currentGame?.scouting || isScouting;
+    return {
+      label: `${isOpponentGame ? 'Opponent' : 'My Team'} • Live Game`,
+      className: isOpponentGame
+        ? 'border-cyan-400/30 text-cyan-200 bg-cyan-400/10'
+        : 'border-violet-300/30 text-violet-100 bg-violet-300/10'
+    };
+  }
+  if (view === 'scouting-rotation' || homeTeamView === 'opponent') {
+    return { label: 'Opponent', className: 'border-cyan-400/30 text-cyan-200 bg-cyan-400/10' };
+  }
+  return { label: 'My Team', className: 'border-violet-300/30 text-violet-100 bg-violet-300/10' };
+};
+
+const ModeBadge = () => {
+  const badge = getModeBadge();
+  return (
+    <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${badge.className}`}>
+      <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+      {badge.label}
+    </div>
+  );
 };
 
 const BottomNav = () => (
@@ -2485,7 +2788,7 @@ const QuickSearchModal = () => {
                   <button
                     key={`p-${p.id}`}
                     onClick={() => {
-                      openPitcherDashboard(p);
+                      openPitcherDashboard(p, 'landing');
                       setShowQuickSearch(false);
                     }}
                     className="text-left bg-slate-700/50 hover:bg-slate-700 border border-slate-600/50 rounded-lg p-3"
@@ -2539,7 +2842,7 @@ const QuickSearchModal = () => {
                     key={`b-${item.session.id}`}
                     onClick={() => {
                       const pitcher = byId[item.pitcherId];
-                      if (pitcher) openPitcherDashboard(pitcher);
+                      if (pitcher) openPitcherDashboard(pitcher, 'landing');
                       setDashboardMode('bullpen');
                       setShowQuickSearch(false);
                     }}
@@ -2629,6 +2932,19 @@ setShowPitcherSelect(true);
 setPendingOpponent('');
 };
 
+const returnToHome = () => {
+setShowPitcherSelect(false);
+setShowAddPitcherModal(false);
+setShowContinueModal(false);
+setPendingPitchingChangeGame(null);
+setPitcherSearch('');
+setPendingOpponent('');
+setBullpenMode(false);
+setScoutingMode(false);
+setIsScouting(false);
+setView('landing');
+};
+
 const openScoutingRoster = () => {
 setScoutingMode(true);
 setIsScouting(true);
@@ -2645,6 +2961,7 @@ const gameGroupId = carryOver?.gameGroupId || carryOver?.id || Date.now();
 const starterPitcherId = carryOver?.starterPitcherId || pitcher.id;
 const starterPitcherName = carryOver?.starterPitcherName || carryOver?.pitcherName || pitcher.name;
 const carriedState = carryOver?.state || null;
+const carriedPitchCountBaseline = carryOver ? (carriedState?.atBatPitches?.length || 0) : 0;
 const newGame = carryOver ? {
   ...carryOver,
   id: Date.now(),
@@ -2663,6 +2980,7 @@ const newGame = carryOver ? {
     currentOuts: carriedState?.currentOuts || 0,
     currentBatterHandedness: carriedState?.currentBatterHandedness || 'R',
     atBatPitches: carriedState?.atBatPitches || [],
+    pitchCountBaseline: carriedPitchCountBaseline,
     selectedZone: carriedState?.selectedZone || null,
     pitchTrail: carriedState?.pitchTrail || [],
     currentBases: cloneBases(carriedState?.currentBases),
@@ -2689,6 +3007,7 @@ const newGame = carryOver ? {
     currentOuts: 0,
     currentBatterHandedness: 'R',
     atBatPitches: [],
+    pitchCountBaseline: 0,
     selectedZone: null,
     pitchTrail: [],
     currentBases: createEmptyBases(),
@@ -2700,6 +3019,7 @@ setCurrentInning(newGame.state.currentInning || 1);
 setCurrentBatter(newGame.state.currentBatter || 1);
 setCurrentBatterHandedness(newGame.lineup?.[(newGame.state.currentBatter || 1) - 1]?.handedness || newGame.state.currentBatterHandedness || 'R');
 setAtBatPitches(newGame.state.atBatPitches || []);
+setPitchCountBaseline(newGame.state.pitchCountBaseline || 0);
 setPitchTrail(newGame.state.pitchTrail || []);
 setSelectedZone(newGame.state.selectedZone || null);
 setCurrentBases(cloneBases(newGame.state.currentBases));
@@ -2744,18 +3064,21 @@ gamesList.forEach(game => {
   totalGames++;
   game.innings?.forEach(inning => {
     inning.atBats?.forEach(atBat => {
+      if (!doesAtBatBelongToGamePitcher(atBat, game)) return;
+      const trackedPitches = getTrackedAtBatPitches(atBat);
+      const trackedPitchCount = getTrackedAtBatPitchCount(atBat);
       totalAtBats++;
-      totalPitches += atBat.totalPitches;
-      if ((atBat.totalPitches || 0) <= 3) resolvedIn3++;
-      if ((atBat.totalPitches || 0) <= 4) resolvedIn4++;
+      totalPitches += trackedPitchCount;
+      if (trackedPitchCount <= 3) resolvedIn3++;
+      if (trackedPitchCount <= 4) resolvedIn4++;
       
-      if (atBat.pitches.length > 0) {
+      if (trackedPitches.length > 0) {
         totalFirstPitches++;
-        if (atBat.pitches[0].isStrike) firstPitchStrikes++;
+        if (trackedPitches[0].isStrike) firstPitchStrikes++;
       }
-      if (atBat.pitches.length >= 3) {
+      if (trackedPitches.length >= 3) {
         totalThreePitchSequences++;
-        const firstThree = atBat.pitches.slice(0, 3);
+        const firstThree = trackedPitches.slice(0, 3);
         const strikesInFirstThree = firstThree.filter((p) => p.isStrike).length;
         if (strikesInFirstThree >= 2) twoOfThreeStrikes++;
       }
@@ -2763,7 +3086,7 @@ gamesList.forEach(game => {
       // 1-1 count strike%: evaluate pitch thrown when the pre-pitch count is 1-1
       let balls = 0;
       let strikes = 0;
-      atBat.pitches.forEach((pitch) => {
+      trackedPitches.forEach((pitch) => {
         if (balls === 1 && strikes === 1) {
           oneOneCountTotal++;
           if (pitch.isStrike) oneOneCountStrikes++;
@@ -2779,7 +3102,7 @@ gamesList.forEach(game => {
         }
       });
 
-      atBat.pitches.forEach(pitch => {
+      trackedPitches.forEach(pitch => {
         if (pitch.isStrike) totalStrikes++;
         if (pitch.strikeType === 'Swinging' || pitch.strikeType === 'Foul' || pitch.strikeType === 'In Play') {
           totalSwings++;
@@ -2835,13 +3158,13 @@ return pitchers.map((pitcher) => {
 }).sort((a, b) => b.totalPitches - a.totalPitches);
 };
 
-const recordPitch = (type, isStrike, strikeType = null, ballType = null, zoneOverride = null) => {
+const recordPitch = (type, isStrike, strikeType = null, ballType = null, zoneOverride = null, velocityOverride = null) => {
 const currentCount = getCountFromPitches(atBatPitches);
 if (!currentGame?.isBullpen && (currentCount.balls >= 4 || currentCount.strikes >= 3)) {
   setPendingPitch(null);
   return;
 }
-const velocity = currentVelocity.trim();
+const velocity = velocityOverride || currentVelocity.trim();
 const pitch = {
 type,
 isStrike,
@@ -2858,6 +3181,7 @@ const newTrail = [{ type, isStrike, zone: zoneOverride ?? selectedZone, velocity
 setActionHistory([...actionHistory, {
   type: 'pitch',
   atBatPitches: [...atBatPitches],
+  pitchCountBaseline,
   currentBatter,
   currentInning,
   currentOuts,
@@ -2892,6 +3216,7 @@ setPendingPitch({ type, isStrike });
 
 const completeAtBatWithPitches = (outcome, pitchesArray, outDetails = null) => {
 const { nextBases, runsScored, rbi } = applyOutcomeToBases(currentBases, outcome, currentHitter, currentBatter);
+const pitcherEntryOffset = pitchCountBaseline || 0;
 const atBat = {
 batter: currentBatter,
 batterName: currentHitter?.name || `Batter ${currentBatter}`,
@@ -2906,7 +3231,9 @@ rbi,
 basesBefore: cloneBases(currentBases),
 basesAfter: cloneBases(nextBases),
 outDetails,
-totalPitches: pitchesArray.length
+totalPitches: pitchesArray.length,
+pitcherEntryOffset,
+pitcherPitchCount: Math.max(pitchesArray.length - pitcherEntryOffset, 0)
 };
 
  
@@ -2928,6 +3255,7 @@ if (!updatedGame.innings.find(i => i.number === currentInning)) {
 
 setCurrentGame(updatedGame);
 setAtBatPitches([]);
+setPitchCountBaseline(0);
 setPitchTrail([]);
 setCurrentVelocity('');
 setCurrentBatter(getNextBatterSlot(currentBatter));
@@ -2959,6 +3287,7 @@ if (atBatPitches.length === 0 && outcome !== 'K' && outcome !== 'BB' && outcome 
 setActionHistory([...actionHistory, {
   type: 'completeAtBat',
   atBatPitches: [...atBatPitches],
+  pitchCountBaseline,
   currentBatter,
   currentInning,
   currentOuts,
@@ -2995,6 +3324,7 @@ const lastAction = actionHistory[actionHistory.length - 1];
 
  
   setAtBatPitches(lastAction.atBatPitches);
+  setPitchCountBaseline(lastAction.pitchCountBaseline || 0);
   setCurrentBatter(lastAction.currentBatter);
   setCurrentInning(lastAction.currentInning);
   setCurrentOuts(lastAction.currentOuts);
@@ -3024,6 +3354,7 @@ const confirmNextBatter = () => {
 setActionHistory([...actionHistory, {
 type: 'nextBatter',
 atBatPitches: [...atBatPitches],
+pitchCountBaseline,
 currentBatter,
 currentInning,
 currentOuts,
@@ -3038,6 +3369,7 @@ if (currentGame?.isBullpen) {
 }
  
 setAtBatPitches([]);
+setPitchCountBaseline(0);
 setPitchTrail([]);
 setSelectedZone(null);
 setCurrentBatter(getNextBatterSlot(currentBatter));
@@ -3148,6 +3480,7 @@ const continueGame = (game) => {
   setCurrentOuts(state.currentOuts || 0);
   setCurrentBatterHandedness(game.lineup?.[(state.currentBatter || 1) - 1]?.handedness || state.currentBatterHandedness || 'R');
   setAtBatPitches(state.atBatPitches || []);
+  setPitchCountBaseline(state.pitchCountBaseline || 0);
   setPitchTrail(state.pitchTrail || []);
   setSelectedZone(state.selectedZone || null);
   setCurrentBases(cloneBases(state.currentBases));
@@ -3159,8 +3492,19 @@ const continueGame = (game) => {
   setView('pitch-entry');
 };
 
+const getTrackedAtBatPitches = (atBat) => {
+  const pitches = atBat?.pitches || [];
+  const offset = Math.max(atBat?.pitcherEntryOffset || 0, 0);
+  return offset > 0 ? pitches.slice(offset) : pitches;
+};
+
+const getTrackedAtBatPitchCount = (atBat) => {
+  if (typeof atBat?.pitcherPitchCount === 'number') return atBat.pitcherPitchCount;
+  return getTrackedAtBatPitches(atBat).length;
+};
+
 const getTotalPitchCount = () => {
-if (!currentGame || !currentGame.innings) return atBatPitches.length;
+if (!currentGame || !currentGame.innings) return Math.max(atBatPitches.length - pitchCountBaseline, 0);
 let total = 0;
 currentGame.innings.forEach(inning => {
 inning.atBats?.forEach(atBat => {
@@ -3168,11 +3512,11 @@ inning.atBats?.forEach(atBat => {
     ? atBat.pitcherId === currentGame.pitcherId
     : currentGame.starterPitcherId === currentGame.pitcherId;
   if (belongsToCurrentPitcher) {
-    total += atBat.totalPitches || 0;
+    total += getTrackedAtBatPitchCount(atBat);
   }
 });
 });
-total += atBatPitches.length;
+total += Math.max(atBatPitches.length - pitchCountBaseline, 0);
 return total;
 };
 
@@ -3208,9 +3552,10 @@ const pitchTypeStrikes = {};
 gamesList.forEach(game => {
   game.innings?.forEach(inning => {
     inning.atBats?.forEach(atBat => {
+      if (!doesAtBatBelongToGamePitcher(atBat, game)) return;
       totalAtBats++;
-      const abPitches = atBat.pitches || [];
-      const abTotal = atBat.totalPitches ?? abPitches.length;
+      const abPitches = getTrackedAtBatPitches(atBat);
+      const abTotal = getTrackedAtBatPitchCount(atBat);
       totalPitches += abTotal;
       if (abTotal <= 3) resolvedIn3++;
       if (abTotal <= 4) resolvedIn4++;
@@ -3313,10 +3658,12 @@ const getPitchPairingImpact = (gamesList, firstFilter = 'all') => {
   gamesList.forEach(game => {
     game.innings?.forEach(inning => {
       inning.atBats?.forEach(atBat => {
+        if (!doesAtBatBelongToGamePitcher(atBat, game)) return;
         const outcomeClass = classifyOutcome(atBat.outcome);
-        for (let i = 0; i < (atBat.pitches?.length || 0) - 1; i++) {
-          const a = atBat.pitches[i].type;
-          const b = atBat.pitches[i + 1].type;
+        const trackedPitches = getTrackedAtBatPitches(atBat);
+        for (let i = 0; i < trackedPitches.length - 1; i++) {
+          const a = trackedPitches[i].type;
+          const b = trackedPitches[i + 1].type;
           if (firstFilter !== 'all' && a !== firstFilter) continue;
           const key = `${a}→${b}`;
           if (!pairs[key]) pairs[key] = { total: 0, K: 0, BB: 0, HBP: 0, H: 0, OUT: 0, OTHER: 0 };
@@ -3366,10 +3713,11 @@ const getPutAwayStats = (gamesList) => {
   gamesList.forEach(game => {
     game.innings?.forEach(inning => {
       inning.atBats?.forEach(atBat => {
+        if (!doesAtBatBelongToGamePitcher(atBat, game)) return;
         let strikes = 0;
         let strikesSoFar = 0;
         let reachedTwo = false;
-        for (const p of atBat.pitches || []) {
+        for (const p of getTrackedAtBatPitches(atBat)) {
           if (p.isStrike) {
             if (p.strikeType === 'Foul') {
               if (strikesSoFar < 2) { strikes += 1; strikesSoFar += 1; }
@@ -3416,7 +3764,8 @@ const getPitchTypesFromGames = (gamesList, fallbackPitchTypes = []) => {
   gamesList.forEach((game) => {
     game.innings?.forEach((inning) => {
       inning.atBats?.forEach((atBat) => {
-        atBat.pitches?.forEach((pitch) => {
+        if (!doesAtBatBelongToGamePitcher(atBat, game)) return;
+        getTrackedAtBatPitches(atBat).forEach((pitch) => {
           if (pitch?.type) found.add(pitch.type);
         });
       });
@@ -3430,8 +3779,9 @@ const zoneCounts = Object.fromEntries(zoneLabels.map(z => [z, 0]));
 gamesList.forEach(game => {
   game.innings?.forEach(inning => {
     inning.atBats?.forEach(atBat => {
+      if (!doesAtBatBelongToGamePitcher(atBat, game)) return;
       if (handednessFilter !== 'all' && atBat.batterHandedness !== handednessFilter) return;
-      atBat.pitches.forEach(pitch => {
+      getTrackedAtBatPitches(atBat).forEach(pitch => {
         if (pitchFilter !== 'all' && pitch.type !== pitchFilter) return;
         if (pitch.zone && zoneCounts[pitch.zone] !== undefined) {
           zoneCounts[pitch.zone] += 1;
@@ -3449,8 +3799,9 @@ const getPitchEffectivenessByHandedness = (gamesList) => {
   gamesList.forEach(game => {
     game.innings?.forEach(inning => {
       inning.atBats?.forEach(atBat => {
+        if (!doesAtBatBelongToGamePitcher(atBat, game)) return;
         const handed = atBat.batterHandedness || 'R';
-        atBat.pitches?.forEach(p => {
+        getTrackedAtBatPitches(atBat).forEach(p => {
           if (!stats[p.type]) {
             stats[p.type] = {
               L: { total: 0, strikes: 0 },
@@ -3476,7 +3827,8 @@ const getPitchUsageByCount = (gamesList, counts) => {
   gamesList.forEach(game => {
     game.innings?.forEach(inning => {
       inning.atBats?.forEach(atBat => {
-        const pitches = atBat.pitches || [];
+        if (!doesAtBatBelongToGamePitcher(atBat, game)) return;
+        const pitches = getTrackedAtBatPitches(atBat);
         pitches.forEach((pitch, idx) => {
           const { balls, strikes } = getCountFromPitches(pitches.slice(0, idx));
           const countKey = `${balls}-${strikes}`;
@@ -3599,81 +3951,12 @@ backgroundImage: "url('/mnt/user-data/uploads/Screenshot_2025-11-16_165624.png')
         {showHomeMenu && (
           <div className="absolute right-0 top-14 w-[min(18rem,calc(100vw-2rem))] max-h-[calc(100vh-5rem)] overflow-y-auto rounded-xl border border-white/20 bg-slate-900/95 backdrop-blur p-3 shadow-2xl">
             <div className="flex items-center justify-between px-2 py-2">
-              <div className="text-xs uppercase tracking-wider text-slate-400">Theme</div>
+              <div className="text-xs uppercase tracking-wider text-slate-400">Quick Menu</div>
               <button
                 onClick={() => setShowHomeMenu(false)}
                 className="text-xs text-slate-400 hover:text-white"
               >
                 Close
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              {themeOptions.map((opt) => (
-                <button
-                  key={opt.id}
-                  onClick={() => {
-                    setTheme(opt.id);
-                    setShowHomeMenu(false);
-                  }}
-                  className={`flex items-center gap-2 px-2 py-2 rounded-lg border text-xs transition-all ${
-                    theme === opt.id
-                      ? 'border-white/30 bg-slate-800/80 text-white'
-                      : 'border-slate-700/60 bg-slate-800/40 text-slate-300 hover:bg-slate-800/70'
-                  }`}
-                >
-                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: opt.swatch }}></span>
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="px-2 py-2 text-xs uppercase tracking-wider text-slate-400">Font Size</div>
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              {['compact', 'normal', 'large'].map((size) => (
-                <button
-                  key={size}
-                  onClick={() => {
-                    setFontSize(size);
-                    setShowHomeMenu(false);
-                  }}
-                  className={`px-2 py-2 rounded-lg border text-xs transition-all ${
-                    fontSize === size
-                      ? 'border-white/30 bg-slate-800/80 text-white'
-                      : 'border-slate-700/60 bg-slate-800/40 text-slate-300 hover:bg-slate-800/70'
-                  }`}
-                >
-                  {size.charAt(0).toUpperCase() + size.slice(1)}
-                </button>
-              ))}
-            </div>
-
-            <div className="px-2 py-2 text-xs uppercase tracking-wider text-slate-400">Accessibility</div>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => {
-                  setHighContrast(!highContrast);
-                  setShowHomeMenu(false);
-                }}
-                className={`px-2 py-2 rounded-lg border text-xs transition-all ${
-                  highContrast
-                    ? 'border-white/30 bg-slate-800/80 text-white'
-                    : 'border-slate-700/60 bg-slate-800/40 text-slate-300 hover:bg-slate-800/70'
-                }`}
-              >
-                Contrast: {highContrast ? 'On' : 'Off'}
-              </button>
-              <button
-                onClick={() => {
-                  setReduceMotion(!reduceMotion);
-                  setShowHomeMenu(false);
-                }}
-                className={`px-2 py-2 rounded-lg border text-xs transition-all ${
-                  reduceMotion
-                    ? 'border-white/30 bg-slate-800/80 text-white'
-                    : 'border-slate-700/60 bg-slate-800/40 text-slate-300 hover:bg-slate-800/70'
-                }`}
-              >
-                Motion: {reduceMotion ? 'Off' : 'On'}
               </button>
             </div>
             <div className="px-2 py-2 text-xs uppercase tracking-wider text-slate-400">Home View</div>
@@ -3707,7 +3990,34 @@ backgroundImage: "url('/mnt/user-data/uploads/Screenshot_2025-11-16_165624.png')
                 Opponent
               </button>
             </div>
-            <div className="px-2 py-2 text-xs uppercase tracking-wider text-slate-400">Roster Share</div>
+            <button
+              onClick={() => {
+                setView('help');
+                setShowHomeMenu(false);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg text-white hover:bg-slate-800/80 transition-all"
+            >
+              Help & Settings
+            </button>
+            <button
+              onClick={() => {
+                reopenOnboarding();
+                setShowHomeMenu(false);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg text-white hover:bg-slate-800/80 transition-all"
+            >
+              Replay First-Use Guide
+            </button>
+            <button
+              onClick={() => {
+                setShowQuickSearch(true);
+                setShowHomeMenu(false);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg text-white hover:bg-slate-800/80 transition-all"
+            >
+              Quick Search
+            </button>
+            <div className="px-2 pt-3 pb-2 text-xs uppercase tracking-wider text-slate-400">Roster Share</div>
             <button
               onClick={() => {
                 setRosterShareMode('export');
@@ -3740,6 +4050,9 @@ backgroundImage: "url('/mnt/user-data/uploads/Screenshot_2025-11-16_165624.png')
       </div>
       <div className="text-center mb-6 pt-14">
       <div className="text-4xl sm:text-5xl mb-3">⚾</div>
+      <div className="flex justify-center mb-3">
+        <ModeBadge />
+      </div>
       <h1 className="text-3xl sm:text-5xl lg:text-6xl font-bold text-white mb-2 drop-shadow-2xl tracking-tight">PitchTrace</h1>
       <p className="text-sm sm:text-xl text-white/90 mb-5 drop-shadow-lg font-light">
           Track every pitch. Analyze every game. Elevate your team.
@@ -3798,6 +4111,58 @@ backgroundImage: "url('/mnt/user-data/uploads/Screenshot_2025-11-16_165624.png')
         )}
       </div>
 
+      {showOnboarding && (
+        <div className="fixed inset-0 z-[55] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg rounded-3xl border border-white/15 bg-slate-900/95 p-6 shadow-2xl">
+            <div className="flex items-center justify-between gap-3 mb-5">
+              <div>
+                <div className="text-cyan-300 text-xs uppercase tracking-[0.3em] mb-1">First Use Guide</div>
+                <div className="text-white text-2xl font-semibold">{onboardingSteps[onboardingStep].title}</div>
+              </div>
+              <button
+                onClick={dismissOnboarding}
+                className="text-slate-400 hover:text-white text-sm"
+              >
+                Skip
+              </button>
+            </div>
+            <div className="rounded-2xl border border-slate-700/70 bg-slate-950/80 p-4 mb-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400 mb-2">{onboardingSteps[onboardingStep].eyebrow}</div>
+              <p className="text-slate-200 leading-relaxed">{onboardingSteps[onboardingStep].body}</p>
+            </div>
+            <div className="flex items-center gap-2 mb-5">
+              {onboardingSteps.map((_, idx) => (
+                <span
+                  key={`onboard-${idx}`}
+                  className={`h-2 flex-1 rounded-full ${idx === onboardingStep ? 'bg-cyan-300' : 'bg-slate-700'}`}
+                />
+              ))}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setOnboardingStep((prev) => Math.max(prev - 1, 0))}
+                disabled={onboardingStep === 0}
+                className="flex-1 h-11 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-sm disabled:opacity-40"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => {
+                  if (onboardingStep === onboardingSteps.length - 1) {
+                    dismissOnboarding();
+                  } else {
+                    setOnboardingStep((prev) => prev + 1);
+                  }
+                }}
+                className="flex-1 h-11 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-900 text-sm font-semibold"
+              >
+                {onboardingStep === onboardingSteps.length - 1 ? 'Finish' : 'Next'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Resume Banner + Recent Items */}
       {(() => {
         const allRecentGames = getAllRecentGames().filter((item) => item.side === homeTeamView);
@@ -3824,9 +4189,15 @@ backgroundImage: "url('/mnt/user-data/uploads/Screenshot_2025-11-16_165624.png')
             )}
 
             <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-4">
-                <div className="text-white font-semibold mb-3">Recent Games</div>
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="text-white font-semibold">Recent Games</div>
+                  <div className="text-[11px] text-white/55 uppercase tracking-[0.18em]">Hold for edit</div>
+                </div>
                 {recentGames.length === 0 ? (
-                  <div className="text-white/60 text-sm">No open games yet.</div>
+                  <div className="rounded-2xl border border-dashed border-white/15 bg-slate-950/25 p-4">
+                    <div className="text-white/80 text-sm font-medium mb-1">No open games yet.</div>
+                    <div className="text-white/55 text-xs">Use Quick Start below: add or pick a pitcher, start a game, then this becomes your resume spot.</div>
+                  </div>
                 ) : (
                   <div className="space-y-2">
                     {recentGames.map(item => (
@@ -3866,7 +4237,7 @@ backgroundImage: "url('/mnt/user-data/uploads/Screenshot_2025-11-16_165624.png')
                           </div>
                         </div>
                         <div className="text-white/60 text-xs mt-1">
-                          Starter: {item.starterPitcherName || item.pitcherName} • {new Date(item.game.date).toLocaleDateString()} • Hold for options
+                          Starter: {item.starterPitcherName || item.pitcherName} • {new Date(item.game.date).toLocaleDateString()} • Hold for edit
                         </div>
                       </button>
                     ))}
@@ -3977,7 +4348,25 @@ backgroundImage: "url('/mnt/user-data/uploads/Screenshot_2025-11-16_165624.png')
       <div className="w-full md:max-w-7xl mx-auto px-3 sm:px-4 md:px-6">
         <div className="bg-slate-900/70 border border-slate-700/60 rounded-2xl p-3 sm:p-4 mb-4">
           <div className="text-white font-semibold mb-1 text-sm">Quick Start</div>
-          <div className="text-slate-300 text-xs mb-3">Add pitcher, track, then review.</div>
+          <div className="text-slate-300 text-xs mb-3">1. Add pitcher  2. Start game  3. Track pitches  4. Open report</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+            <div className="rounded-xl border border-slate-700/60 bg-slate-950/35 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Step 1</div>
+              <div className="text-white text-sm font-semibold">Add Pitcher</div>
+            </div>
+            <div className="rounded-xl border border-slate-700/60 bg-slate-950/35 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Step 2</div>
+              <div className="text-white text-sm font-semibold">Start Game</div>
+            </div>
+            <div className="rounded-xl border border-slate-700/60 bg-slate-950/35 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Step 3</div>
+              <div className="text-white text-sm font-semibold">Track</div>
+            </div>
+            <div className="rounded-xl border border-slate-700/60 bg-slate-950/35 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Step 4</div>
+              <div className="text-white text-sm font-semibold">Report</div>
+            </div>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <button
               onClick={() => setView('rotation')}
@@ -4001,7 +4390,7 @@ backgroundImage: "url('/mnt/user-data/uploads/Screenshot_2025-11-16_165624.png')
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
           <div
             onClick={() => setView('game-log')}
             className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-3 hover:bg-white/15 transition-all cursor-pointer group shadow-2xl"
@@ -4010,7 +4399,7 @@ backgroundImage: "url('/mnt/user-data/uploads/Screenshot_2025-11-16_165624.png')
               <Download size={18} className="text-violet-100" />
             </div>
             <h2 className="text-base font-semibold text-white mb-1">Game Log</h2>
-            <p className="text-white/70 text-xs mb-2">Open every saved game.</p>
+            <p className="text-white/70 text-[11px] mb-2">All saved games.</p>
             <div className="flex items-center text-violet-100 font-medium text-xs">
               <span>Open Log</span>
               <ChevronRight size={16} className="ml-1.5 group-hover:translate-x-1 transition-transform" />
@@ -4025,7 +4414,7 @@ backgroundImage: "url('/mnt/user-data/uploads/Screenshot_2025-11-16_165624.png')
               <Target size={18} className="text-amber-400" />
             </div>
             <h2 className="text-base font-semibold text-white mb-1">Execution Pen</h2>
-            <p className="text-white/70 text-xs mb-2">Bullpen-focused tracking.</p>
+            <p className="text-white/70 text-[11px] mb-2">Bullpen tracking.</p>
             <div className="flex items-center text-amber-400 font-medium text-xs">
               <span>Start Bullpen</span>
               <ChevronRight size={16} className="ml-1.5 group-hover:translate-x-1 transition-transform" />
@@ -4040,9 +4429,23 @@ backgroundImage: "url('/mnt/user-data/uploads/Screenshot_2025-11-16_165624.png')
               <BarChart3 size={18} className="text-cyan-400" />
             </div>
             <h2 className="text-base font-semibold text-white mb-1">Season Dashboard</h2>
-            <p className="text-white/70 text-xs mb-2">View trends and dashboards.</p>
+            <p className="text-white/70 text-[11px] mb-2">View trends fast.</p>
             <div className="flex items-center text-cyan-400 font-medium text-xs">
               <span>View Analytics</span>
+              <ChevronRight size={16} className="ml-1.5 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </div>
+          <div
+            onClick={() => setView('help')}
+            className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-3 hover:bg-white/15 transition-all cursor-pointer group shadow-2xl"
+          >
+            <div className="w-9 h-9 bg-slate-200/10 rounded-xl flex items-center justify-center mb-2 group-hover:bg-slate-200/20 transition-all">
+              <span className="text-slate-100 text-lg">?</span>
+            </div>
+            <h2 className="text-base font-semibold text-white mb-1">Help & Settings</h2>
+            <p className="text-white/70 text-[11px] mb-2">Guide, theme, tips.</p>
+            <div className="flex items-center text-slate-100 font-medium text-xs">
+              <span>Open</span>
               <ChevronRight size={16} className="ml-1.5 group-hover:translate-x-1 transition-transform" />
             </div>
           </div>
@@ -4268,14 +4671,20 @@ backgroundImage: "url('/mnt/user-data/uploads/Screenshot_2025-11-16_165624.png')
             <div>
               <p className="text-slate-400 text-sm mb-2">
                 {shareContent === 'roster'
-                  ? 'Download a roster JSON file and share it by AirDrop, Files, text, or email.'
-                  : 'Download a full data JSON file to move games, reports, and bullpens to another device.'}
+                  ? 'Share a roster file by AirDrop, Files, text, or email. Download and copy still work as backup options.'
+                  : 'Share a full data file to move games, reports, and bullpens to another device.'}
               </p>
               <button
-                onClick={handleDownloadShareFile}
+                onClick={handleNativeShareFile}
                 className="mt-3 w-full h-11 bg-cyan-400 hover:bg-cyan-300 rounded-xl text-slate-900 font-semibold transition-all"
               >
-                Download JSON
+                Share File
+              </button>
+              <button
+                onClick={handleDownloadShareFile}
+                className="mt-3 w-full h-11 bg-slate-700 hover:bg-slate-600 rounded-xl text-white font-semibold transition-all"
+              >
+                Download File
               </button>
               <button
                 onClick={() => {
@@ -4285,7 +4694,7 @@ backgroundImage: "url('/mnt/user-data/uploads/Screenshot_2025-11-16_165624.png')
                   navigator.clipboard?.writeText(text);
                   setRosterShareMessage('JSON copied to clipboard.');
                 }}
-                className="mt-3 w-full h-11 bg-slate-700 hover:bg-slate-600 rounded-xl text-white font-semibold transition-all"
+                className="mt-3 w-full h-11 bg-slate-800 hover:bg-slate-700 rounded-xl text-white font-semibold transition-all"
               >
                 Copy JSON
               </button>
@@ -4330,8 +4739,454 @@ backgroundImage: "url('/mnt/user-data/uploads/Screenshot_2025-11-16_165624.png')
     )}
   </div>
 );
- 
 
+}
+
+if (view === 'help') {
+return (
+<div className={`${shellClass} p-4 sm:p-6 ${appClass}`} style={appStyle}>
+<BroadcastStyle />
+<div className="w-full md:max-w-5xl mx-auto px-3 sm:px-4 md:px-6 pb-24">
+  <Breadcrumbs text={getBreadcrumbs()} />
+  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+    <div>
+      <button
+        onClick={() => setView('landing')}
+        className="text-slate-400 hover:text-white mb-2 flex items-center gap-2"
+      >
+        ← Back to Home
+      </button>
+      <h1 className="text-3xl font-medium text-white mb-1">Help & Settings</h1>
+      <p className="text-slate-400 text-sm">Keep setup, onboarding, and workflow tips in one place.</p>
+    </div>
+    <ModeBadge />
+  </div>
+
+  <BottomNav />
+  <QuickSearchModal />
+
+  <div className="grid gap-4">
+    <div className="rounded-2xl border border-slate-700/60 bg-slate-900/60 p-4">
+      <div className="text-white font-semibold mb-1">Quick Workflow</div>
+      <div className="text-slate-300 text-sm">Add pitcher to start game to track to report.</div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+        {['Add Pitcher', 'Start Game', 'Track', 'Report'].map((step, idx) => (
+          <div key={step} className="rounded-xl border border-slate-700/60 bg-slate-950/35 px-3 py-2">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Step {idx + 1}</div>
+            <div className="text-white text-sm font-semibold">{step}</div>
+          </div>
+        ))}
+      </div>
+      <button
+        onClick={reopenOnboarding}
+        className="mt-4 h-10 px-4 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-900 text-sm font-semibold"
+      >
+        Replay First-Use Guide
+      </button>
+    </div>
+
+    <div className="rounded-2xl border border-slate-700/60 bg-slate-900/60 p-4">
+      <div className="text-white font-semibold mb-3">Theme</div>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        {themeOptions.map((opt) => (
+          <button
+            key={opt.id}
+            onClick={() => setTheme(opt.id)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-all ${
+              theme === opt.id
+                ? 'border-white/30 bg-slate-800/80 text-white'
+                : 'border-slate-700/60 bg-slate-800/40 text-slate-300 hover:bg-slate-800/70'
+            }`}
+          >
+            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: opt.swatch }}></span>
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>
+
+    <div className="grid sm:grid-cols-2 gap-4">
+      <div className="rounded-2xl border border-slate-700/60 bg-slate-900/60 p-4">
+        <div className="text-white font-semibold mb-3">Text Size</div>
+        <div className="grid grid-cols-3 gap-2">
+          {['compact', 'normal', 'large'].map((size) => (
+            <button
+              key={size}
+              onClick={() => setFontSize(size)}
+              className={`px-3 py-2 rounded-xl border text-sm transition-all ${
+                fontSize === size
+                  ? 'border-white/30 bg-slate-800/80 text-white'
+                  : 'border-slate-700/60 bg-slate-800/40 text-slate-300 hover:bg-slate-800/70'
+              }`}
+            >
+              {size.charAt(0).toUpperCase() + size.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-700/60 bg-slate-900/60 p-4">
+        <div className="text-white font-semibold mb-3">Accessibility</div>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => setHighContrast(!highContrast)}
+            className={`px-3 py-2 rounded-xl border text-sm transition-all ${
+              highContrast
+                ? 'border-white/30 bg-slate-800/80 text-white'
+                : 'border-slate-700/60 bg-slate-800/40 text-slate-300 hover:bg-slate-800/70'
+            }`}
+          >
+            Contrast: {highContrast ? 'On' : 'Off'}
+          </button>
+          <button
+            onClick={() => setReduceMotion(!reduceMotion)}
+            className={`px-3 py-2 rounded-xl border text-sm transition-all ${
+              reduceMotion
+                ? 'border-white/30 bg-slate-800/80 text-white'
+                : 'border-slate-700/60 bg-slate-800/40 text-slate-300 hover:bg-slate-800/70'
+            }`}
+          >
+            Motion: {reduceMotion ? 'Off' : 'On'}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div className="rounded-2xl border border-slate-700/60 bg-slate-900/60 p-4">
+      <div className="text-white font-semibold mb-3">Coach Notes</div>
+      <div className="space-y-2 text-sm text-slate-300">
+        <div>Live game flow: pick pitch type, choose strike or ball, then finish the at-bat.</div>
+        <div>Recent Games and Game Log cards support a hold gesture for edit actions.</div>
+        <div>Opponent mode keeps scouting work separate from your own team.</div>
+      </div>
+    </div>
+
+    <div className="grid sm:grid-cols-2 gap-4">
+      <button
+        onClick={() => setView('sales')}
+        className="rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-4 text-left hover:bg-cyan-400/10 transition-all"
+      >
+        <div className="text-cyan-200 text-xs uppercase tracking-[0.18em] mb-2">Sales Page</div>
+        <div className="text-white font-semibold mb-1">Pricing + coach-facing pitch</div>
+        <div className="text-slate-300 text-sm">Season pricing ideas, positioning, and a simple one-page sales layout.</div>
+      </button>
+      <button
+        onClick={() => setView('compliance')}
+        className="rounded-2xl border border-amber-400/20 bg-amber-400/5 p-4 text-left hover:bg-amber-400/10 transition-all"
+      >
+        <div className="text-amber-200 text-xs uppercase tracking-[0.18em] mb-2">NCAA Handout</div>
+        <div className="text-white font-semibold mb-1">Printable compliance sheet</div>
+        <div className="text-slate-300 text-sm">A quick explainer you can share with teams before games when using PitchTrace.</div>
+      </button>
+    </div>
+  </div>
+</div>
+</div>
+);
+}
+
+if (view === 'sales') {
+return (
+<div className={`${shellClass} p-4 sm:p-6 ${appClass}`} style={appStyle}>
+<BroadcastStyle />
+<div className="w-full md:max-w-6xl mx-auto px-3 sm:px-4 md:px-6 pb-24">
+  <Breadcrumbs text={getBreadcrumbs()} />
+  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+    <div>
+      <button
+        onClick={() => setView('help')}
+        className="text-slate-400 hover:text-white mb-2 flex items-center gap-2"
+      >
+        ← Back to Help
+      </button>
+      <h1 className="text-3xl font-medium text-white mb-1">PitchTrace Sales Page</h1>
+      <p className="text-slate-400 text-sm">Coach-friendly positioning, pricing, and a one-page product pitch.</p>
+    </div>
+    <div className="flex gap-2">
+      <ModeBadge />
+      <button
+        onClick={() => printElementContent('PitchTrace Sales Page', salesPrintRef)}
+        className="px-4 py-2 bg-cyan-400 hover:bg-cyan-300 rounded-lg text-slate-900 text-sm font-semibold"
+      >
+        Print / Save
+      </button>
+    </div>
+  </div>
+
+  <BottomNav />
+  <QuickSearchModal />
+  {printPreview && (
+    <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+      <div className="w-full max-w-6xl h-[90vh] rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl flex flex-col overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 border-b border-slate-800">
+          <div>
+            <div className="text-white font-semibold">{printPreview.title} Preview</div>
+            <div className="text-slate-400 text-sm">Review before printing or saving.</div>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={async () => {
+                await exportPrintableContent(printPreview.title, printPreview.html);
+                setPrintPreview(null);
+              }}
+              className="px-4 py-2 bg-cyan-400 hover:bg-cyan-300 rounded-lg text-slate-900 text-sm font-semibold"
+            >
+              Print / Save
+            </button>
+            <button
+              onClick={() => setPrintPreview(null)}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-white text-sm"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+        <iframe
+          title={`${printPreview.title} preview`}
+          srcDoc={printPreviewMarkup}
+          className="flex-1 w-full bg-white"
+        />
+      </div>
+    </div>
+  )}
+
+  <div ref={salesPrintRef} className="space-y-5">
+    <div className="rounded-[2rem] border border-cyan-400/25 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),transparent_35%),linear-gradient(135deg,rgba(15,23,42,0.98),rgba(8,47,73,0.88))] p-6 sm:p-8 overflow-hidden relative">
+      <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-cyan-400/10 blur-3xl pointer-events-none" />
+      <div className="relative grid lg:grid-cols-[1.5fr_0.9fr] gap-6 items-start">
+        <div>
+          <div className="text-cyan-300 text-xs uppercase tracking-[0.3em] mb-3">PitchTrace</div>
+          <h2 className="text-4xl sm:text-5xl font-semibold text-white leading-tight mb-4">NCAA-approved pitch tracking built for real dugout speed.</h2>
+          <p className="text-slate-300 max-w-3xl text-base leading-relaxed">
+            PitchTrace gives programs one fast workflow for live games, rosters, season reporting, and scouting review without dragging staff through extra screens, paper notes, or postgame cleanup.
+          </p>
+          <div className="flex flex-wrap gap-2 mt-5">
+            {['One device workflow', 'Offline-friendly game flow', 'Coach-ready reports', 'Built for college baseball'].map((item) => (
+              <span key={item} className="px-3 py-1.5 rounded-full border border-cyan-400/20 bg-cyan-400/8 text-cyan-100 text-xs uppercase tracking-[0.14em]">
+                {item}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-5">
+          <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400 mb-3">Best Fit</div>
+          <div className="space-y-3 text-sm text-slate-200">
+            <div className="rounded-xl border border-slate-700/70 bg-slate-900/70 p-3">College programs that want faster live pitch entry and cleaner reports.</div>
+            <div className="rounded-xl border border-slate-700/70 bg-slate-900/70 p-3">Staffs that need one app for game use, roster setup, and postgame review.</div>
+            <div className="rounded-xl border border-slate-700/70 bg-slate-900/70 p-3">Teams that want a direct team license instead of an app-store workflow.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div className="grid md:grid-cols-3 gap-4">
+      <div className="rounded-[1.75rem] border border-slate-700/60 bg-slate-900/70 p-5 shadow-lg shadow-slate-950/30">
+        <div className="text-cyan-300 text-xs uppercase tracking-[0.18em] mb-2">Starter</div>
+        <div className="flex items-end gap-2 mb-1">
+          <div className="text-white text-3xl font-semibold">$499</div>
+          <div className="text-slate-400 text-sm mb-1">/ team / season</div>
+        </div>
+        <div className="text-slate-500 text-xs uppercase tracking-[0.16em] mb-4">Core workflow</div>
+        <div className="space-y-2 text-sm text-slate-300">
+          {['Live games', 'Roster', 'Season dashboard', 'Reports'].map((item) => (
+            <div key={item} className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-300" />
+              <span>{item}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="rounded-[1.75rem] border border-cyan-400/35 bg-gradient-to-br from-cyan-400/14 to-cyan-950/30 p-5 shadow-lg shadow-cyan-950/30">
+        <div className="text-cyan-200 text-xs uppercase tracking-[0.18em] mb-2">Most Popular</div>
+        <div className="flex items-end gap-2 mb-1">
+          <div className="text-white text-3xl font-semibold">$999</div>
+          <div className="text-slate-200 text-sm mb-1">/ program / season</div>
+        </div>
+        <div className="text-cyan-100 text-xs uppercase tracking-[0.16em] mb-4">Most teams start here</div>
+        <div className="space-y-2 text-sm text-slate-100">
+          {['Everything in Starter', 'Opponent scouting workflow', 'Coach onboarding + support', 'Shared compliance handout'].map((item) => (
+            <div key={item} className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-200" />
+              <span>{item}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="rounded-[1.75rem] border border-slate-700/60 bg-slate-900/70 p-5 shadow-lg shadow-slate-950/30">
+        <div className="text-amber-300 text-xs uppercase tracking-[0.18em] mb-2">Department</div>
+        <div className="flex items-end gap-2 mb-1">
+          <div className="text-white text-3xl font-semibold">Custom</div>
+        </div>
+        <div className="text-slate-400 text-sm mb-4">Multi-team / annual</div>
+        <div className="space-y-2 text-sm text-slate-300">
+          {['Multiple teams or staff', 'Custom rollout support', 'Department pricing'].map((item) => (
+            <div key={item} className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-300" />
+              <span>{item}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+
+    <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-4">
+      <div className="rounded-[1.75rem] border border-slate-700/60 bg-slate-900/70 p-5">
+        <div className="text-white font-semibold mb-4">What coaches actually buy</div>
+        <div className="grid sm:grid-cols-2 gap-3 text-sm text-slate-300">
+          <div className="rounded-xl border border-slate-700/60 bg-slate-950/35 p-3">Fast live tracking that does not slow down input.</div>
+          <div className="rounded-xl border border-slate-700/60 bg-slate-950/35 p-3">One device workflow for games, rosters, season review, and scouting.</div>
+          <div className="rounded-xl border border-slate-700/60 bg-slate-950/35 p-3">Offline-friendly app flow built for real game environments.</div>
+          <div className="rounded-xl border border-slate-700/60 bg-slate-950/35 p-3">Coach-ready reports that are easy to review and share after games.</div>
+        </div>
+      </div>
+      <div className="rounded-[1.75rem] border border-slate-700/60 bg-slate-900/70 p-5">
+        <div className="text-white font-semibold mb-4">Coach-facing pitch</div>
+        <div className="space-y-3 text-sm text-slate-300 leading-relaxed">
+          <div>PitchTrace helps programs capture every pitch, review every outing, and organize scouting in one NCAA-approved workflow.</div>
+          <div>It is built for speed first: fewer taps, faster reports, and less game-day friction for the staff actually entering the data.</div>
+          <div>Best fit: direct team sales, seasonal licensing, and demo-led onboarding.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+);
+}
+
+if (view === 'compliance') {
+return (
+<div className={`${shellClass} p-4 sm:p-6 ${appClass}`} style={appStyle}>
+<BroadcastStyle />
+<div className="w-full md:max-w-5xl mx-auto px-3 sm:px-4 md:px-6 pb-24">
+  <Breadcrumbs text={getBreadcrumbs()} />
+  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+    <div>
+      <button
+        onClick={() => setView('help')}
+        className="text-slate-400 hover:text-white mb-2 flex items-center gap-2"
+      >
+        ← Back to Help
+      </button>
+      <h1 className="text-3xl font-medium text-white mb-1">NCAA / Opponent Handout</h1>
+      <p className="text-slate-400 text-sm">A one-page explainer to share before games when PitchTrace is in use.</p>
+    </div>
+    <div className="flex gap-2">
+      <ModeBadge />
+      <button
+        onClick={() => printElementContent('PitchTrace NCAA Handout', compliancePrintRef)}
+        className="px-4 py-2 bg-amber-400 hover:bg-amber-300 rounded-lg text-slate-900 text-sm font-semibold"
+      >
+        Print / Save
+      </button>
+    </div>
+  </div>
+
+  <BottomNav />
+  <QuickSearchModal />
+  {printPreview && (
+    <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+      <div className="w-full max-w-6xl h-[90vh] rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl flex flex-col overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 border-b border-slate-800">
+          <div>
+            <div className="text-white font-semibold">{printPreview.title} Preview</div>
+            <div className="text-slate-400 text-sm">Review before printing or saving.</div>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={async () => {
+                await exportPrintableContent(printPreview.title, printPreview.html);
+                setPrintPreview(null);
+              }}
+              className="px-4 py-2 bg-amber-400 hover:bg-amber-300 rounded-lg text-slate-900 text-sm font-semibold"
+            >
+              Print / Save
+            </button>
+            <button
+              onClick={() => setPrintPreview(null)}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-white text-sm"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+        <iframe
+          title={`${printPreview.title} preview`}
+          srcDoc={printPreviewMarkup}
+          className="flex-1 w-full bg-white"
+        />
+      </div>
+    </div>
+  )}
+
+  <div ref={compliancePrintRef} className="rounded-[2rem] border border-slate-700/60 bg-white text-slate-900 p-6 sm:p-8 space-y-6 shadow-xl">
+    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 border-b border-slate-300 pb-5">
+      <div>
+        <div className="text-sm uppercase tracking-[0.24em] text-slate-500 mb-2">Game-Day Compliance Notice</div>
+        <h2 className="text-3xl font-semibold">PitchTrace Notification Sheet</h2>
+        <p className="text-slate-600 mt-2 max-w-2xl">Use this sheet to notify opponents, site administrators, or event staff that PitchTrace is being used as part of your bench workflow during competition.</p>
+      </div>
+      <div className="rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 min-w-[220px]">
+        <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-1">Status</div>
+        <div className="text-lg font-semibold">Pre-Game Notice</div>
+        <div className="text-sm text-slate-500">Share before first pitch.</div>
+      </div>
+    </div>
+
+    <div className="grid md:grid-cols-2 gap-4">
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-2">App Name</div>
+        <div className="font-semibold text-lg">PitchTrace</div>
+      </div>
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-2">Primary Use</div>
+        <div className="font-semibold text-lg">In-game pitch tracking, bullpen tracking, and post-game reporting.</div>
+      </div>
+    </div>
+
+    <div className="rounded-2xl border border-slate-200 p-5">
+      <div className="font-semibold mb-3">Scope of Use</div>
+      <div className="space-y-3 text-sm leading-relaxed">
+        <div>PitchTrace is used by team staff for pitch tracking, bullpen tracking, scouting entry, and postgame reporting.</div>
+        <div>The app records pitch type, result, location, velocity, at-bat outcome, and related staff-entered reporting notes.</div>
+        <div>Opponent scouting sessions are stored separately from the team’s own game data.</div>
+        <div>PitchTrace is used as a bench workflow and reporting tool. It is not an on-field player communication system.</div>
+      </div>
+    </div>
+
+    <div className="rounded-2xl border border-slate-200 p-5">
+      <div className="font-semibold mb-3">Suggested Notification Language</div>
+      <div className="space-y-3 text-sm leading-relaxed">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">“Our staff is using PitchTrace for pitch tracking and reporting during today’s game.”</div>
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">“PitchTrace is being used as a stats and scouting workflow on the bench, and we are notifying you of its use before the game.”</div>
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">“If you need the app name listed for your game notes, please list PitchTrace.”</div>
+      </div>
+    </div>
+
+    <div className="grid md:grid-cols-[1fr_0.85fr] gap-4">
+      <div className="rounded-2xl border border-slate-200 p-5">
+        <div className="font-semibold mb-3">Program Notes</div>
+        <div className="space-y-3 text-sm">
+          <div>School / Program: ________________________________</div>
+          <div>Sport Administrator / Coach Contact: ________________________________</div>
+          <div>Game Date / Opponent: ________________________________</div>
+          <div>Additional Notes: ________________________________</div>
+        </div>
+      </div>
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+        <div className="font-semibold mb-3">Staff Reminder</div>
+        <div className="space-y-3 text-sm leading-relaxed">
+          <div>Share this sheet before the game begins.</div>
+          <div>Keep the app name consistent: PitchTrace.</div>
+          <div>Use this handout for opponents, site staff, or administrators who request bench-app details.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+);
 }
 
 if (view === 'rotation') {
@@ -4341,6 +5196,7 @@ return (
 <BroadcastStyle />
 <div className="w-full w-full md:max-w-7xl mx-auto px-3 sm:px-4 md:px-6 px-4 sm:px-6 pb-32 md:pb-8">
 <Breadcrumbs text={getBreadcrumbs()} />
+<div className="mb-4"><ModeBadge /></div>
 <div className="flex justify-between items-center mb-8">
 <div>
 <button
@@ -4866,6 +5722,7 @@ return (
 <BroadcastStyle />
 <div className="w-full md:max-w-7xl mx-auto px-3 sm:px-4 md:px-6">
   <Breadcrumbs text={getBreadcrumbs()} />
+  <div className="mb-4"><ModeBadge /></div>
   <div className="flex justify-between items-center mb-8">
     <div>
       <button
@@ -5158,6 +6015,7 @@ return (
 <BroadcastStyle />
     <div className="w-full w-full md:max-w-7xl mx-auto px-3 sm:px-4 md:px-6 px-4 sm:px-6">
       <Breadcrumbs text={getBreadcrumbs()} />
+      <div className="mb-4"><ModeBadge /></div>
       <div className="flex justify-between items-center mb-8">
         <div>
           <button 
@@ -5576,8 +6434,6 @@ return (
               <th className="py-2 pr-2">K/BB</th>
               <th className="py-2 pr-2">Avg P/BF</th>
               <th className="py-2 pr-2">OB/Out {'<='}4</th>
-              <th className="py-2 pr-2">OB/Out {'<='}3</th>
-              <th className="py-2 pr-2">1-1 Strike%</th>
               <th className="py-2 pr-2">2 of 3 Strikes%</th>
               <th className="py-2 pr-2">Whiff%</th>
             </tr>
@@ -5585,7 +6441,7 @@ return (
           <tbody>
             {displayedRows.length === 0 ? (
               <tr>
-                <td colSpan={18} className="py-5 text-slate-500">No pitchers found for current filters.</td>
+                <td colSpan={16} className="py-5 text-slate-500">No pitchers found for current filters.</td>
               </tr>
             ) : (
               displayedRows.map((row) => (
@@ -5604,8 +6460,6 @@ return (
                   <td className="py-2 pr-2">{row.kbbRatio}</td>
                   <td className="py-2 pr-2">{row.avgPitchesPerBF}</td>
                   <td className="py-2 pr-2">{row.resolveIn4Rate}%</td>
-                  <td className="py-2 pr-2">{row.resolveIn3Rate}%</td>
-                  <td className="py-2 pr-2">{row.oneOneStrikeRate}%</td>
                   <td className="py-2 pr-2">{row.twoOfThreeRate}%</td>
                   <td className="py-2 pr-2">{row.whiffRate}%</td>
                 </tr>
@@ -5624,7 +6478,6 @@ return (
         <div><span className="font-semibold">BB:</span> {totals.walks}</div>
         <div><span className="font-semibold">HBP:</span> {totals.hbps || 0}</div>
         <div><span className="font-semibold">Avg P/BF:</span> {totals.avgPitchesPerBF}</div>
-        <div><span className="font-semibold">1-1 Strike%:</span> {totals.oneOneStrikeRate}%</div>
         <div><span className="font-semibold">Whiff%:</span> {totals.whiffRate}%</div>
       </div>
     </div>
@@ -5646,10 +6499,10 @@ return (
 <div className="flex justify-between items-center mb-8">
 <div>
 <button
-onClick={() => setView('team-dashboard')}
+onClick={() => setView(dashboardBackView)}
 className="text-slate-400 hover:text-white mb-2 flex items-center gap-2"
 >
-← Back to Team Dashboard
+← {dashboardBackView === 'landing' ? 'Back to Home' : 'Back to Team Dashboard'}
 </button>
 <h1 className="text-3xl font-medium text-white mb-1">{selectedPitcher.name} Dashboard</h1>
 <p className="text-slate-400 text-sm">#{selectedPitcher.number} • {selectedPitcher.handedness} • {selectedPitcher.role}</p>
@@ -6340,6 +7193,7 @@ return (
 <BroadcastStyle />
 <div className="w-full md:max-w-6xl mx-auto px-3 sm:px-4 md:px-6">
   <Breadcrumbs text={getBreadcrumbs()} />
+  <div className="mb-4"><ModeBadge /></div>
   <div className="flex items-center justify-between gap-3 mb-5">
     <div>
       <button
@@ -6365,8 +7219,9 @@ return (
 
   <div className="space-y-3">
     {gameLogItems.length === 0 ? (
-      <div className="rounded-2xl border border-slate-700/60 bg-slate-900/60 p-4 text-slate-400 text-sm">
-        No games logged yet.
+      <div className="rounded-2xl border border-slate-700/60 bg-slate-900/60 p-4">
+        <div className="text-white font-medium mb-1">No games logged yet.</div>
+        <div className="text-slate-400 text-sm">Start a game from Home, save it, and it will show up here for reports, edits, and cleanup.</div>
       </div>
     ) : (
       gameLogItems.map((item) => (
@@ -6426,10 +7281,73 @@ return (
               Edit
             </button>
           </div>
+          <div className="mt-2 text-[11px] uppercase tracking-[0.16em] text-slate-500">Hold for edit also works on Recent Games.</div>
         </div>
       ))
     )}
   </div>
+
+  {showRecentGameActions && recentGameActionItem && (
+    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+      <button
+        onClick={closeRecentGameActions}
+        className="absolute inset-0"
+        aria-label="Close recent game actions"
+      />
+      <div className="relative z-10 w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+        <div className="text-white text-xl font-semibold mb-1">Recent Game Options</div>
+        <div className="text-slate-400 text-sm mb-4">
+          {recentGameActionItem.pitcherName} vs {recentGameActionItem.game.opponent || 'Unknown'}
+        </div>
+        <div className="space-y-3">
+          {confirmingRecentGameDelete && (
+            <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4">
+              <div className="text-red-200 font-semibold mb-2">Delete this game permanently?</div>
+              <div className="text-red-100/80 text-sm">
+                This will permanently delete the game and all stats tied to it. You will not be able to get it back.
+              </div>
+            </div>
+          )}
+          <input
+            type="text"
+            value={recentGameOpponentDraft}
+            onChange={(e) => setRecentGameOpponentDraft(e.target.value)}
+            placeholder={recentGameActionItem?.game?.scouting ? 'Team name' : 'Opponent name'}
+            className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-400"
+          />
+          <button
+            onClick={() => {
+              updateGameOpponentName(recentGameActionItem.game, recentGameOpponentDraft);
+              closeRecentGameActions();
+            }}
+            disabled={!recentGameOpponentDraft.trim()}
+            className="w-full h-12 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-900 font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {recentGameActionItem?.game?.scouting ? 'Save Team Name' : 'Save Opponent Name'}
+          </button>
+          <button
+            onClick={() => {
+              if (!confirmingRecentGameDelete) {
+                setConfirmingRecentGameDelete(true);
+                return;
+              }
+              deleteGameByPitcher(recentGameActionItem.pitcherId, recentGameActionItem.game.id);
+              closeRecentGameActions();
+            }}
+            className="w-full h-12 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 font-semibold transition-all"
+          >
+            {confirmingRecentGameDelete ? 'Yes, Delete Game Forever' : 'Delete Game'}
+          </button>
+          <button
+            onClick={closeRecentGameActions}
+            className="w-full h-12 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium transition-all"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  )}
 </div>
 </div>
 );
@@ -6439,6 +7357,7 @@ if (view === 'report') {
 const shareLink = reportId ? `${window.location.origin}?report=${reportId}` : '';
 const reportLines = (reportText || '').split('\n');
 const reportGroupEntries = reportGame ? getGameReportGroupEntries(reportGame) : [];
+const visibleReportGroupEntries = reportGroupEntries.filter((entry) => getPitcherOwnedPitchTotal(entry.game) > 0);
 const reportStats = reportGame ? getCompactGameStats(reportGame) : null;
 const reportKeyHitters = reportGame ? getKeyHittersFaced(reportGame, 6) : [];
 const reportSprayEvents = reportGame ? getSprayChartEvents(reportGame) : [];
@@ -6446,7 +7365,7 @@ const filteredReportSprayEvents = reportSprayFilter
   ? reportSprayEvents.filter((event) => event.hitter === reportSprayFilter)
   : reportSprayEvents;
 const reportGamePitcherBreakdowns = reportGame
-  ? reportGroupEntries.map((entry) => {
+  ? visibleReportGroupEntries.map((entry) => {
       const pitcher = pitchers.find((p) => String(p.id) === String(entry.pitcherId));
       return {
         ...entry,
@@ -6470,6 +7389,7 @@ return (
 <BroadcastStyle />
 <div className="w-full w-full w-full md:max-w-6xl mx-auto px-3 sm:px-4 md:px-6 px-2 sm:px-0 px-2 sm:px-0">
   <Breadcrumbs text={getBreadcrumbs()} />
+  <div className="mb-4"><ModeBadge /></div>
   <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-6">
     <button
       onClick={() => setView(reportBackView === 'dashboard' && !selectedPitcher ? 'landing' : reportBackView)}
@@ -6485,11 +7405,29 @@ return (
         Copy Share Link
       </button>
       <button
+        onClick={() => printElementContent('PitchTrace Pitch Log', pitchLogPrintRef)}
+        className="w-full sm:w-auto px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white text-sm"
+      >
+        Export Pitch Log
+      </button>
+      <button
         onClick={() => printElementContent('PitchTrace Report', gameReportPrintRef)}
         className="w-full sm:w-auto px-4 py-2 bg-cyan-400 hover:bg-cyan-300 rounded-lg text-slate-900 text-sm font-semibold"
       >
         Print / Save PDF
       </button>
+    </div>
+  </div>
+
+  <div className="mb-4 rounded-2xl border border-slate-700/60 bg-slate-900/60 p-3">
+    <div className="text-white text-sm font-semibold mb-2">Report Color Legend</div>
+    <div className="flex flex-wrap gap-2 text-xs">
+      <span className="px-2 py-1 rounded-full border border-cyan-400/40 bg-cyan-400/10 text-cyan-300">Strike / strike pitch</span>
+      <span className="px-2 py-1 rounded-full border border-red-400/40 bg-red-400/10 text-red-300">Ball / non-strike pitch</span>
+      <span className="px-2 py-1 rounded-full border border-emerald-400/40 bg-emerald-400/10 text-emerald-300">1B</span>
+      <span className="px-2 py-1 rounded-full border border-cyan-400/40 bg-cyan-400/10 text-cyan-300">2B</span>
+      <span className="px-2 py-1 rounded-full border border-violet-400/40 bg-violet-400/10 text-violet-300">3B</span>
+      <span className="px-2 py-1 rounded-full border border-amber-400/40 bg-amber-400/10 text-amber-300">HR</span>
     </div>
   </div>
 
@@ -6593,7 +7531,7 @@ return (
         <div>
           <div className="text-xs uppercase tracking-[0.25em] text-slate-500 mb-3">Pitcher Game Log</div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {reportGroupEntries.map((entry) => {
+            {visibleReportGroupEntries.map((entry) => {
               const stats = getCompactGameStats(entry.game);
               return (
                 <div key={`${entry.pitcherId}-${entry.game.id}`} className="rounded-2xl border border-slate-200 overflow-hidden">
@@ -6734,162 +7672,44 @@ return (
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="rounded-2xl border border-slate-200 p-4">
-            <div className="text-xs uppercase tracking-[0.25em] text-slate-500 mb-3">Key Hitters Faced</div>
-            {reportKeyHitters.length > 0 ? (
-              <div className="space-y-2">
-                {reportKeyHitters.map((hitter) => (
-                  <div key={`${hitter.label}-${hitter.handedness}`} className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-3 flex items-center justify-between gap-4">
-                    <div>
-                      <div className="font-semibold">{hitter.label}</div>
-                      <div className="text-xs uppercase tracking-[0.18em] text-slate-500 mt-1">{hitter.handedness} hitter</div>
-                    </div>
-                    <div className="text-sm text-slate-700 text-right">
-                      <div>{hitter.appearances} AB</div>
-                      <div>H {hitter.hits} • K {hitter.strikeouts} • BB/HBP {hitter.walks}</div>
-                    </div>
+        <div className="rounded-2xl border border-slate-200 p-4">
+          <div className="text-xs uppercase tracking-[0.25em] text-slate-500 mb-3">Key Hitters Faced</div>
+          {reportKeyHitters.length > 0 ? (
+            <div className="space-y-2">
+              {reportKeyHitters.map((hitter) => (
+                <div key={`${hitter.label}-${hitter.handedness}`} className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-3 flex items-center justify-between gap-4">
+                  <div>
+                    <div className="font-semibold">{hitter.label}</div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-slate-500 mt-1">{hitter.handedness} hitter</div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-sm text-slate-500">No hitter data yet.</div>
-            )}
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 p-4">
-            <div className="text-xs uppercase tracking-[0.25em] text-slate-500 mb-3">Spray Chart</div>
-            {reportSprayEvents.length > 0 ? (
-              <div className="space-y-3">
-                <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex items-center justify-between gap-3 mb-3">
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">Hit Distribution</div>
-                      <div className="text-xs uppercase tracking-[0.18em] text-slate-500 mt-1">
-                        {reportSprayFilter ? `Filtered: ${reportSprayFilter}` : 'Scouting View'}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-2xl font-semibold text-slate-900">{filteredReportSprayEvents.length}</div>
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Shown Hits</div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    <button
-                      onClick={() => setReportSprayFilter(null)}
-                      className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
-                        reportSprayFilter === null
-                          ? 'bg-slate-900 text-white border-slate-900'
-                          : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400 hover:text-slate-900'
-                      }`}
-                    >
-                      All Hits
-                    </button>
-                  </div>
-
-                  <div className="relative mx-auto w-full max-w-[360px] aspect-[1/1.05] overflow-hidden rounded-[24px] border border-slate-300 bg-white">
-                    <svg viewBox="0 0 360 380" className="absolute inset-0 w-full h-full">
-                      <rect x="0" y="0" width="360" height="380" fill="#f8fafc" />
-
-                      <path d="M180 334 L34 188 A214 214 0 0 1 326 188 Z" fill="#dcf0c2" stroke="#334155" strokeWidth="2" />
-                      <path d="M180 334 L88 242 A134 134 0 0 1 272 242 Z" fill="#0f6b37" opacity="0.98" stroke="#334155" strokeWidth="1.5" />
-                      <path d="M180 334 L122 275 A84 84 0 0 1 238 275 Z" fill="#b6d76f" stroke="#334155" strokeWidth="1.5" />
-
-                      <path d="M180 334 L34 188" stroke="#1f2937" strokeWidth="2.5" />
-                      <path d="M180 334 L326 188" stroke="#1f2937" strokeWidth="2.5" />
-
-                      <path d="M180 334 L98 157" stroke="#475569" strokeWidth="1.5" />
-                      <path d="M180 334 L144 134" stroke="#475569" strokeWidth="1.5" />
-                      <path d="M180 334 L180 120" stroke="#475569" strokeWidth="1.5" />
-                      <path d="M180 334 L216 134" stroke="#475569" strokeWidth="1.5" />
-                      <path d="M180 334 L262 157" stroke="#475569" strokeWidth="1.5" />
-
-                      <path d="M103 244 A126 126 0 0 1 257 244" fill="none" stroke="#475569" strokeWidth="1.5" />
-                      <path d="M122 275 A84 84 0 0 1 238 275" fill="none" stroke="#475569" strokeWidth="1.5" />
-
-                      <rect x="174" y="326" width="12" height="12" fill="#ffffff" stroke="#475569" strokeWidth="1.5" transform="rotate(45 180 332)" />
-                      <rect x="112" y="270" width="10" height="10" fill="#ffffff" stroke="#94a3b8" strokeWidth="1.2" transform="rotate(45 117 275)" />
-                      <rect x="238" y="270" width="10" height="10" fill="#ffffff" stroke="#94a3b8" strokeWidth="1.2" transform="rotate(45 243 275)" />
-                      <rect x="175" y="224" width="10" height="10" fill="#ffffff" stroke="#94a3b8" strokeWidth="1.2" transform="rotate(45 180 229)" />
-
-                      <text x="58" y="173" fontSize="12" fill="#334155" fontWeight="700">LF</text>
-                      <text x="172" y="110" fontSize="12" fill="#334155" fontWeight="700">CF</text>
-                      <text x="290" y="173" fontSize="12" fill="#334155" fontWeight="700">RF</text>
-                      <text x="90" y="225" fontSize="11" fill="#475569" fontWeight="700">L-C</text>
-                      <text x="246" y="225" fontSize="11" fill="#475569" fontWeight="700">R-C</text>
-
-                      {filteredReportSprayEvents.map((event, idx) => (
-                        <g key={`${event.hitter}-${idx}`}>
-                          <circle
-                            cx={(event.x / 100) * 360}
-                            cy={(event.y / 100) * 380}
-                            r="7"
-                            fill={
-                              event.outcome === 'HR'
-                                ? '#d97706'
-                                : event.outcome === '3B'
-                                  ? '#7c3aed'
-                                  : event.outcome === '2B'
-                                    ? '#0891b2'
-                                    : '#16a34a'
-                            }
-                            stroke="#ffffff"
-                            strokeWidth="2.5"
-                          />
-                          <circle
-                            cx={(event.x / 100) * 360}
-                            cy={(event.y / 100) * 380}
-                            r="10"
-                            fill="transparent"
-                            stroke="rgba(15,23,42,0.16)"
-                            strokeWidth="1"
-                          />
-                          <title>{`${event.hitter} • ${event.outcome}${event.location ? ` • ${event.location}` : ''}`}</title>
-                        </g>
-                      ))}
-                    </svg>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 text-xs">
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-700 font-medium">1B</div>
-                    <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-cyan-700 font-medium">2B</div>
-                    <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-violet-700 font-medium">3B</div>
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700 font-medium">HR</div>
-                  </div>
-
-                  <div className="mt-4 space-y-2">
-                    {reportSprayEvents.map((event, idx) => (
-                      <button
-                        key={`${event.hitter}-note-${idx}`}
-                        onClick={() => setReportSprayFilter(event.hitter)}
-                        className={`w-full text-left rounded-xl border px-3 py-2 text-sm transition-all ${
-                          reportSprayFilter === event.hitter
-                            ? 'bg-slate-900 border-slate-900 text-white'
-                            : 'bg-slate-100 border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
-                        }`}
-                      >
-                        <span className={`font-semibold ${reportSprayFilter === event.hitter ? 'text-white' : 'text-slate-900'}`}>
-                          {event.hitter}
-                        </span>
-                        <span>{` • ${event.outcome}`}</span>
-                        <span>{event.location ? ` • ${event.location}` : ' • No location'}</span>
-                      </button>
-                    ))}
+                  <div className="text-sm text-slate-700 text-right">
+                    <div>{hitter.appearances} AB</div>
+                    <div>H {hitter.hits} • K {hitter.strikeouts} • BB/HBP {hitter.walks}</div>
                   </div>
                 </div>
-              </div>
-            ) : (
-              <div className="text-sm text-slate-500">No hit locations logged yet.</div>
-            )}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-slate-500">No hitter data yet.</div>
+          )}
         </div>
 
-        <div className="space-y-4">
+        <div ref={pitchLogPrintRef} className="space-y-4">
+          <div className="border-b border-slate-300 pb-4">
+            <div className="text-xs uppercase tracking-[0.25em] text-slate-500">Pitch Log</div>
+            <div className="text-2xl font-semibold tracking-tight mt-1">
+              vs {reportGame.opponent || 'Unknown'}
+            </div>
+            <div className="text-sm text-slate-600 mt-1">
+              {new Date(reportGame.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} • inning by inning • pitch by pitch
+            </div>
+          </div>
           <div className="text-xs uppercase tracking-[0.25em] text-slate-500">Pitch By Pitch</div>
-          {reportGroupEntries.flatMap((entry) =>
+          {visibleReportGroupEntries.flatMap((entry) =>
             (entry.game.innings || []).map((inning, inningIdx) => {
-              const inningPitches = inning.atBats?.reduce((sum, ab) => sum + (ab.totalPitches || ab.pitches?.length || 0), 0) || 0;
+              const pitcherAtBats = (inning.atBats || []).filter((atBat) => doesAtBatBelongToGamePitcher(atBat, entry.game));
+              const inningPitches = pitcherAtBats.reduce((sum, ab) => sum + getTrackedAtBatPitchCount(ab), 0) || 0;
+              if (pitcherAtBats.length === 0) return null;
               return (
               <div key={`${entry.game.id}-${inning.number}-${inningIdx}`} className="rounded-2xl border border-slate-200 overflow-hidden">
                 <div className="bg-slate-100 px-4 py-3 flex items-center justify-between">
@@ -6900,16 +7720,22 @@ return (
                   <div className="text-sm text-slate-600">{inningPitches} pitches</div>
                 </div>
                 <div className="divide-y divide-slate-200">
-                  {inning.atBats?.map((atBat, idx) => (
-                    <div key={`${entry.game.id}-${inning.number}-${idx}`} className="p-4 grid grid-cols-1 lg:grid-cols-[220px_1fr_120px] gap-4 items-start">
-                      <div>
-                        <div className="text-sm font-semibold text-slate-900">{getAtBatHitterLabel(atBat)}</div>
-                        <div className="text-xs uppercase tracking-[0.2em] text-slate-500 mt-1">
-                          Spot {atBat.batter} • {atBat.batterHandedness || 'R'} hitter • {atBat.totalPitches || atBat.pitches?.length || 0} pitches
+                  {pitcherAtBats.map((atBat, idx) => (
+                    <div key={`${entry.game.id}-${inning.number}-${idx}`} className="p-4 grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4 items-start">
+                      <div className="space-y-2">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-900">{getAtBatHitterLabel(atBat)}</div>
+                          <div className="text-xs uppercase tracking-[0.2em] text-slate-500 mt-1">
+                            Inning {inning.number} • Spot {atBat.batter} • {atBat.batterHandedness || 'R'} hitter • {getTrackedAtBatPitchCount(atBat)} pitches
+                          </div>
+                        </div>
+                        <div className="inline-flex px-3 py-1.5 rounded-full bg-slate-900 text-white text-xs font-semibold uppercase tracking-[0.12em]">
+                          At-Bat Outcome: {formatAtBatOutcomeLabel(atBat)}
                         </div>
                       </div>
                       <div className="rounded-xl border border-slate-200 overflow-hidden">
-                        <div className="hidden sm:grid grid-cols-[56px_88px_1fr_92px_82px] gap-3 bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        <div className="hidden sm:grid grid-cols-[72px_56px_88px_1fr_92px_82px] gap-3 bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          <div>Inning</div>
                           <div>Pitch</div>
                           <div>Type</div>
                           <div>Result</div>
@@ -6920,10 +7746,11 @@ return (
                           {(atBat.pitches || []).map((pitch, pitchIdx) => (
                             <div
                               key={`${inning.number}-${idx}-${pitchIdx}`}
-                              className={`grid grid-cols-1 sm:grid-cols-[56px_88px_1fr_92px_82px] gap-2 sm:gap-3 px-3 py-3 text-sm ${
+                              className={`grid grid-cols-1 sm:grid-cols-[72px_56px_88px_1fr_92px_82px] gap-2 sm:gap-3 px-3 py-3 text-sm ${
                                 pitch.isStrike ? 'bg-cyan-50/60' : 'bg-rose-50/60'
                               }`}
                             >
+                              <div className="font-semibold text-slate-500">IN {inning.number}</div>
                               <div className="font-semibold text-slate-500">#{pitchIdx + 1}</div>
                               <div className="font-semibold text-slate-900">{pitch.type}</div>
                               <div className="text-slate-800">{getPitchResultLabel(pitch)}</div>
@@ -6931,11 +7758,6 @@ return (
                               <div className="font-semibold text-slate-900">{pitch.velocity || '--'}</div>
                             </div>
                           ))}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="inline-flex px-3 py-2 rounded-full bg-slate-900 text-white text-sm font-semibold">
-                          {atBat.outcome}
                         </div>
                       </div>
                     </div>
@@ -7191,6 +8013,7 @@ return (
 <BroadcastStyle />
 <div className="w-full w-full md:max-w-7xl mx-auto px-3 sm:px-4 md:px-6 px-4 sm:px-6">
   <Breadcrumbs text={getBreadcrumbs()} />
+  <div className="mb-4"><ModeBadge /></div>
   <div className="flex justify-between items-center mb-6">
     <button
       onClick={() => setView('landing')}
@@ -7447,7 +8270,7 @@ return (
   <div className="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 border-t border-slate-700/60 backdrop-blur p-2">
     <div className="w-full md:max-w-7xl mx-auto grid grid-cols-4 gap-2">
       <button
-        onClick={() => setView('landing')}
+        onClick={returnToHome}
         className="h-14 bg-slate-700/60 hover:bg-slate-700 border border-slate-600/50 rounded-xl text-white text-xs font-medium transition-all"
       >
         Home
@@ -7485,12 +8308,13 @@ const recentAtBatsForCurrentHitter = getRecentAtBatsForCurrentHitter(3);
 const currentPitchCount = getCountFromPitches(atBatPitches);
 const supportsVoiceRecognition = typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
 return (
-<div className={`${shellClass} p-3 sm:p-4 ${appClass}`} style={appStyle}>
+<div className={`${shellClass} p-2.5 sm:p-3 pb-24 ${appClass}`} style={appStyle}>
 <BroadcastStyle />
-<div className="w-full md:max-w-7xl mx-auto px-2 sm:px-3 md:px-4">
+<div className="w-full md:max-w-7xl mx-auto px-1.5 sm:px-2.5 md:px-3">
 <Breadcrumbs text={getBreadcrumbs()} />
-<div className="sticky top-16 sm:top-0 z-30 mb-3">
-  <div className="flex flex-wrap items-center gap-2 bg-slate-900/85 backdrop-blur border border-slate-700/50 rounded-xl px-2.5 py-1.5">
+<div className="mb-1.5"><ModeBadge /></div>
+<div className="sticky top-16 sm:top-0 z-30 mb-2">
+  <div className="flex flex-wrap items-center gap-1.5 bg-slate-900/88 backdrop-blur border border-slate-700/50 rounded-xl px-2 py-1.5">
     <button onClick={() => setOneHandMode(!oneHandMode)} className="text-[11px] px-2 py-1 rounded-full border border-cyan-400/40 text-cyan-300 bg-cyan-400/10">{oneHandMode ? 'One-Hand: On' : 'One-Hand: Off'}</button>
     <div className="text-xs text-slate-400">INN <span className="text-white font-semibold">{currentInning}</span></div>
     <div className="text-xs text-slate-400">COUNT <span className="text-white font-semibold">{getCount()}</span></div>
@@ -7511,7 +8335,7 @@ return (
 <BottomNav />
 <QuickSearchModal />
 
-<div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-2.5 mb-2">
+<div className="bg-slate-800/45 border border-slate-700/50 rounded-xl p-2 mb-1.5">
   <div className="flex items-center justify-between gap-4">
     <div>
       <div className="text-slate-400 text-[11px] font-medium uppercase tracking-wider mb-0.5">Velocity</div>
@@ -7533,12 +8357,12 @@ return (
 </div>
 
 {/* Compact Game Scoreboard */}
-<div className="grid grid-cols-1 gap-2 mb-2.5">
-  <div className="rounded-xl border border-cyan-400/30 bg-slate-900/85 p-2 shadow-lg">
-    <div className="grid grid-cols-3 gap-1.5 items-end">
+<div className="grid grid-cols-1 gap-1.5 mb-2">
+  <div className="rounded-xl border border-cyan-400/30 bg-slate-900/88 p-2 shadow-lg">
+    <div className="grid grid-cols-3 gap-1 items-end">
       <div className="text-center">
         <div className="text-cyan-100 text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.16em] mb-0.5">Batter</div>
-        <div className="rounded-lg border border-cyan-400/20 bg-slate-950 px-2 py-1.5 shadow-inner">
+        <div className="rounded-lg border border-cyan-400/20 bg-slate-950 px-2 py-1 shadow-inner">
           <div className="font-bold text-cyan-300 text-3xl sm:text-4xl leading-none" style={{ fontFamily: "'Teko', sans-serif" }}>
             {String(currentBatter).padStart(2, '0')}
           </div>
@@ -7546,7 +8370,7 @@ return (
       </div>
       <div className="text-center">
         <div className="text-cyan-100 text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.16em] mb-0.5">Inning</div>
-        <div className="rounded-lg border border-cyan-400/20 bg-slate-950 px-2 py-1.5 shadow-inner">
+        <div className="rounded-lg border border-cyan-400/20 bg-slate-950 px-2 py-1 shadow-inner">
           <div className="font-bold text-cyan-300 text-4xl sm:text-5xl leading-none" style={{ fontFamily: "'Teko', sans-serif" }}>
             {currentInning}
           </div>
@@ -7554,7 +8378,7 @@ return (
       </div>
       <div className="text-center">
         <div className="text-cyan-100 text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.16em] mb-0.5">Pitches</div>
-        <div className="rounded-lg border border-cyan-400/20 bg-slate-950 px-2 py-1.5 shadow-inner">
+        <div className="rounded-lg border border-cyan-400/20 bg-slate-950 px-2 py-1 shadow-inner">
           <div className="font-bold text-cyan-300 text-3xl sm:text-4xl leading-none" style={{ fontFamily: "'Teko', sans-serif" }}>
             {String(getTotalPitchCount()).padStart(2, '0')}
           </div>
@@ -7657,54 +8481,16 @@ return (
   </div>
 </div>
 
-<div className="rounded-xl border border-cyan-400/20 bg-slate-900/70 p-2 mb-2">
+<div className="rounded-xl border border-cyan-400/20 bg-slate-900/70 p-2 mb-1.5">
   <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
     <div>
       <div className="text-cyan-100 text-[11px] font-semibold uppercase tracking-[0.14em]">Smart Input</div>
-      <div className="text-[11px] text-slate-400">Use speak to text or type. AI Assist can clean up messy transcripts.</div>
+      <div className="text-[10px] text-slate-400">Speak or type. Best order: pitch type, result, location.</div>
     </div>
-    <div className="text-[11px] text-slate-500 text-right">
-      Try: <span className="text-slate-300">slider called strike away</span> or <span className="text-slate-300">changeup single left center</span>
+    <div className="text-[10px] text-slate-500 text-right">
+      Try: <span className="text-slate-300">slider called strike away</span>
     </div>
   </div>
-  <details className="mb-2 rounded-lg border border-slate-700/60 bg-slate-950/60">
-    <summary className="cursor-pointer list-none px-2.5 py-2 text-[11px] text-slate-300 flex items-center justify-between">
-      <span>AI Assist Settings</span>
-      <span className="text-slate-500">{aiAssistEnabled ? 'On' : 'Off'}</span>
-    </summary>
-    <div className="px-2.5 pb-2.5 space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <label className="text-[11px] text-slate-400">Enable AI transcript cleanup</label>
-        <button
-          onClick={() => setAiAssistEnabled(!aiAssistEnabled)}
-          className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
-            aiAssistEnabled
-              ? 'bg-cyan-400/15 border-cyan-400/30 text-cyan-200'
-              : 'bg-slate-800 border-slate-700 text-slate-300'
-          }`}
-        >
-          {aiAssistEnabled ? 'Enabled' : 'Disabled'}
-        </button>
-      </div>
-      <input
-        type="text"
-        value={aiBackendUrl}
-        onChange={(e) => setAiBackendUrl(e.target.value)}
-        placeholder="AI backend URL (preferred)"
-        className="w-full px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-400"
-      />
-      <input
-        type="password"
-        value={openAiApiKey}
-        onChange={(e) => setOpenAiApiKey(e.target.value)}
-        placeholder="Optional fallback OpenAI API key"
-        className="w-full px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-400"
-      />
-      <div className="text-[10px] text-slate-500">
-        Preferred setup: your own backend URL. The API key field is only a fallback for local testing.
-      </div>
-    </div>
-  </details>
   <div className="flex flex-wrap gap-1.5">
     <input
       type="text"
@@ -7724,7 +8510,7 @@ return (
         }
       }}
       placeholder="Type or speak: slider called strike away"
-      className="flex-1 min-w-[180px] px-2.5 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-400"
+      className="flex-1 min-w-[170px] px-2.5 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-400"
     />
     {supportsVoiceRecognition && (
       <button
@@ -7739,16 +8525,10 @@ return (
       </button>
     )}
     <button
-      onClick={() => {
-        if (aiAssistEnabled && openAiApiKey.trim()) {
-          runAiAssistForVoiceCommand();
-        } else {
-          previewVoiceCommand();
-        }
-      }}
+      onClick={() => previewVoiceCommand()}
       className="px-2.5 py-2 rounded-lg text-xs font-semibold border border-cyan-400/30 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20 transition-all"
     >
-      {isAiResolving ? 'Thinking...' : aiAssistEnabled ? 'AI Fix' : 'Preview'}
+      Preview
     </button>
     <button
       onClick={() => applyVoiceCommand()}
@@ -7761,9 +8541,6 @@ return (
   {voiceCommandError ? (
     <div className="mt-2 text-xs text-red-300">{voiceCommandError}</div>
   ) : null}
-  {aiAssistStatus ? (
-    <div className="mt-2 text-xs text-cyan-300">{aiAssistStatus}</div>
-  ) : null}
   {voiceCommandPreview ? (
     <div className="mt-2 flex flex-wrap items-center gap-2">
       <span className="text-[11px] text-slate-400 uppercase tracking-[0.14em]">Preview</span>
@@ -7772,10 +8549,59 @@ return (
       </span>
     </div>
   ) : null}
+  {(voiceCommandPreview || voiceCommandText) ? (
+      <div className="mt-2 space-y-1.5">
+      <div className="text-[10px] text-slate-500 uppercase tracking-[0.14em]">Correction Chips</div>
+      <div className="flex flex-wrap gap-1.5">
+        {voiceCorrectionTokens.result.map((token) => (
+          <button
+            key={`voice-result-${token}`}
+            onClick={() => applyVoiceCorrectionToken(token)}
+            className="px-2 py-1 rounded-full border border-cyan-400/20 bg-cyan-400/5 text-cyan-200 text-[11px] font-medium"
+          >
+            {token}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {voiceCorrectionTokens.location.map((token) => (
+          <button
+            key={`voice-location-${token}`}
+            onClick={() => applyVoiceCorrectionToken(token)}
+            className="px-2 py-1 rounded-full border border-red-400/20 bg-red-400/5 text-red-200 text-[11px] font-medium"
+          >
+            {token}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {voiceCorrectionTokens.outcome.map((token) => (
+          <button
+            key={`voice-outcome-${token}`}
+            onClick={() => applyVoiceCorrectionToken(token)}
+            className="px-2 py-1 rounded-full border border-amber-400/20 bg-amber-400/5 text-amber-200 text-[11px] font-medium"
+          >
+            {token}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {voiceCorrectionTokens.detail.map((token) => (
+          <button
+            key={`voice-detail-${token}`}
+            onClick={() => applyVoiceCorrectionToken(token)}
+            className="px-2 py-1 rounded-full border border-slate-600 bg-slate-800/60 text-slate-200 text-[11px] font-medium"
+          >
+            {token}
+          </button>
+        ))}
+      </div>
+    </div>
+  ) : null}
 </div>
 
       {/* Pitch Location + Trail */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 mb-2.5">
         {hidePitchLocationPanel ? (
           <div className="bg-slate-800/40 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-3 flex items-center justify-between">
             <div className="text-slate-400 text-xs font-medium uppercase tracking-wider">Pitch Location Hidden</div>
@@ -7788,7 +8614,7 @@ return (
           </div>
         ) : (
           <div
-            className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2.5"
+            className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2"
             onTouchStart={handlePitchLocationTouchStart}
             onTouchEnd={handlePitchLocationTouchEnd}
           >
@@ -7839,7 +8665,7 @@ return (
           </div>
         )}
 
-        <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2.5">
+        <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2">
           <div className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-2">Pitch Trail (Last 8)</div>
           <div className="flex flex-wrap gap-1.5">
             {pitchTrail.length === 0 ? (
@@ -7860,10 +8686,10 @@ return (
         </div>
       </div>
 
-      <div className="mb-4">
+      <div className="mb-2.5">
         <button
           onClick={() => setShowInGameDetails(!showInGameDetails)}
-          className="w-full h-10 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-200 hover:bg-slate-700/90 transition-all text-sm"
+          className="w-full h-9 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-200 hover:bg-slate-700/90 transition-all text-xs"
         >
           {showInGameDetails ? 'Hide Detail Panels' : 'Show Detail Panels'}
         </button>
@@ -7944,19 +8770,19 @@ return (
       )}
 
       {/* Pitch Entry Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 mb-2.5">
         {/* Strikes */}
-        <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-3">
+        <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-2 h-2 bg-cyan-400 rounded-full"></div>
             <div className="text-slate-300 text-sm font-medium uppercase tracking-wider">Strike</div>
           </div>
-          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2 mb-3">
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-1.5 mb-2">
             {selectedPitcher?.pitchTypes.map(type => (
               <button
                 key={type}
                 onClick={() => selectPitchType(type, true)}
-                className={`bg-cyan-400/10 hover:bg-cyan-400/20 border border-cyan-400/30 rounded-xl text-cyan-400 font-bold active:scale-95 transition-all ${oneHandMode ? 'h-24 text-3xl' : 'h-20 text-2xl'} min-h-[4.5rem]`}
+                className={`bg-cyan-400/10 hover:bg-cyan-400/20 border border-cyan-400/30 rounded-xl text-cyan-400 font-bold active:scale-95 transition-all ${oneHandMode ? 'h-[4.5rem] text-2xl' : 'h-12 text-base'} min-h-[3rem]`}
               >
                 {type}
               </button>
@@ -7965,14 +8791,14 @@ return (
           
           {/* Strike Type Selection */}
           {pendingPitch && pendingPitch.isStrike && (
-            <div className="mt-3 p-3 bg-cyan-400/5 border border-cyan-400/20 rounded-xl">
+            <div className="mt-2 p-2 bg-cyan-400/5 border border-cyan-400/20 rounded-xl">
               <div className="text-slate-300 text-xs font-medium uppercase tracking-wider mb-3">Strike Type</div>
               <div className="grid grid-cols-3 gap-2">
                 {strikeTypes.map(strikeType => (
                   <button
                     key={strikeType}
                     onClick={() => recordPitch(pendingPitch.type, true, strikeType)}
-                    className="py-2.5 bg-cyan-400/20 hover:bg-cyan-400/30 border border-cyan-400/40 rounded-lg text-cyan-400 font-medium text-xs active:scale-95 transition-all"
+                    className="py-1.5 bg-cyan-400/20 hover:bg-cyan-400/30 border border-cyan-400/40 rounded-lg text-cyan-400 font-medium text-[11px] active:scale-95 transition-all"
                   >
                     {strikeType}
                   </button>
@@ -7983,19 +8809,19 @@ return (
         </div>
 
         {/* Balls */}
-        <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-3">
+        <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-2 h-2 bg-red-400 rounded-full"></div>
             <div className="text-slate-300 text-sm font-medium uppercase tracking-wider">Ball</div>
           </div>
-          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2 mb-3">
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-1.5 mb-2">
             {selectedPitcher?.pitchTypes.map(type => (
               <button
                 key={type}
                 onClick={() => {
                   selectPitchType(type, false);
                 }}
-                className={`bg-red-400/10 hover:bg-red-400/20 border border-red-400/30 rounded-xl text-red-400 font-bold active:scale-95 transition-all ${oneHandMode ? 'h-24 text-3xl' : 'h-20 text-2xl'} min-h-[4.5rem]`}
+                className={`bg-red-400/10 hover:bg-red-400/20 border border-red-400/30 rounded-xl text-red-400 font-bold active:scale-95 transition-all ${oneHandMode ? 'h-[4.5rem] text-2xl' : 'h-12 text-base'} min-h-[3rem]`}
               >
                 {type}
               </button>
@@ -8004,7 +8830,7 @@ return (
           
           {/* Ball Location */}
           {pendingPitch && !pendingPitch.isStrike && (
-            <div className="mt-3 p-3 bg-red-400/5 border border-red-400/20 rounded-xl">
+            <div className="mt-2 p-2 bg-red-400/5 border border-red-400/20 rounded-xl">
               <div className="flex items-center justify-between mb-3">
                 <div className="text-slate-300 text-xs font-medium uppercase tracking-wider">Ball Location</div>
               </div>
@@ -8015,7 +8841,7 @@ return (
                     onClick={() => {
                       recordPitch(pendingPitch.type, false, null, edge);
                     }}
-                    className="py-2.5 bg-red-400/20 hover:bg-red-400/30 border border-red-400/40 rounded-lg text-red-300 font-medium text-xs active:scale-95 transition-all"
+                    className="py-1.5 bg-red-400/20 hover:bg-red-400/30 border border-red-400/40 rounded-lg text-red-300 font-medium text-[11px] active:scale-95 transition-all"
                   >
                     {edge}
                   </button>
@@ -8025,7 +8851,7 @@ return (
                     onClick={() => {
                       recordPitch(pendingPitch.type, false, null, 'HBP');
                     }}
-                    className="py-2.5 bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/40 rounded-lg text-amber-200 font-medium text-xs active:scale-95 transition-all col-span-2 sm:col-span-4"
+                    className="py-1.5 bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/40 rounded-lg text-amber-200 font-medium text-[11px] active:scale-95 transition-all col-span-2 sm:col-span-4"
                   >
                     HBP
                   </button>
@@ -8037,9 +8863,9 @@ return (
       </div>
 
       {/* Outcomes */}
-      <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-3 mb-4">
+      <div className="bg-slate-800/50 backdrop-blur-sm border border-amber-400/25 rounded-xl p-2 mb-16">
         <div className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-3">At-Bat Result</div>
-        <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2">
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
           {outcomes.map(outcome => (
             <button
               key={outcome}
@@ -8059,7 +8885,7 @@ return (
                 completeAtBat(outcome);
               }}
               disabled={atBatPitches.length === 0}
-              className={`bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 rounded-xl text-amber-400 font-semibold disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 transition-all ${oneHandMode ? 'h-20 text-lg' : 'h-16 text-sm'}`}
+              className={`bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 rounded-xl text-amber-400 font-semibold disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 transition-all ${oneHandMode ? 'h-12 text-sm px-2' : 'h-9 text-[11px] px-1.5'}`}
             >
               {outcome}
             </button>
@@ -8304,36 +9130,39 @@ return (
       )}
 
       {/* Fixed Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 border-t border-slate-700/60 backdrop-blur p-2">
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 border-t border-slate-700/60 backdrop-blur px-2 py-1">
+        <div className="w-full md:max-w-7xl mx-auto mb-1 text-[9px] text-slate-400 uppercase tracking-[0.14em]">
+          {getUndoSummary()}
+        </div>
         <div className="w-full md:max-w-7xl mx-auto grid grid-cols-5 gap-2">
           <button
-            onClick={() => setView('rotation')}
-            className="h-14 bg-slate-700/60 hover:bg-slate-700 border border-slate-600/50 rounded-xl text-white text-xs font-medium transition-all"
+            onClick={returnToHome}
+            className="h-9 bg-slate-700/60 hover:bg-slate-700 border border-slate-600/50 rounded-lg text-white text-[10px] font-medium transition-all"
           >
             Home
           </button>
           <button
             onClick={undoLastPitch}
             disabled={actionHistory.length === 0}
-            className="h-14 bg-slate-700/60 hover:bg-slate-700 border border-slate-600/50 rounded-xl text-white text-xs font-medium transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+            className="h-9 bg-slate-700/60 hover:bg-slate-700 border border-slate-600/50 rounded-lg text-white text-[10px] font-medium transition-all disabled:opacity-30 disabled:cursor-not-allowed"
           >
-            Undo
+            {actionHistory.length === 0 ? 'Undo' : 'Undo Last'}
           </button>
           <button
             onClick={nextBatter}
-            className="h-14 bg-slate-700/60 hover:bg-slate-700 border border-slate-600/50 rounded-xl text-white text-xs font-medium transition-all"
+            className="h-9 bg-slate-700/60 hover:bg-slate-700 border border-slate-600/50 rounded-lg text-white text-[10px] font-medium transition-all"
           >
             Next
           </button>
           <button
             onClick={pitchingChange}
-            className="h-14 bg-slate-700/60 hover:bg-slate-700 border border-slate-600/50 rounded-xl text-white text-xs font-medium transition-all"
+            className="h-9 bg-slate-700/60 hover:bg-slate-700 border border-slate-600/50 rounded-lg text-white text-[10px] font-medium transition-all"
           >
             Change
           </button>
           <button
             onClick={saveGame}
-            className="h-14 bg-cyan-400 hover:bg-cyan-300 rounded-xl text-slate-900 text-xs font-semibold transition-all shadow-lg shadow-cyan-400/20"
+            className="h-9 bg-cyan-400 hover:bg-cyan-300 rounded-lg text-slate-900 text-[10px] font-semibold transition-all shadow-lg shadow-cyan-400/20"
           >
             Save
           </button>
