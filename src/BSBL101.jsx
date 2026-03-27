@@ -317,17 +317,72 @@ const voicePitchAliases = [
   { type: 'CCH', aliases: ['cch', 'circle change', 'circle changeup'] }
 ];
 
+const voiceCanonicalWords = [
+  'error', 'ball', 'strike', 'called', 'swinging', 'foul', 'play', 'in', 'out',
+  'single', 'double', 'triple', 'walk', 'home', 'run', 'sac', 'doubleplay',
+  'left', 'right', 'center', 'field', 'gap', 'line', 'shortstop', 'pitcher',
+  'changeup', 'curveball', 'slider', 'sinker', 'splitter', 'slurve', 'sweeper',
+  'cutter', 'fastball', 'four', 'seam', 'two', 'down', 'up', 'away', 'inside',
+  'hit', 'pitch', 'fouled', 'looking', 'ground', 'grounder', 'popup', 'lineout',
+  'flyout', 'comebacker'
+];
+
+const getEditDistance = (left = '', right = '') => {
+  if (left === right) return 0;
+  const rows = left.length + 1;
+  const cols = right.length + 1;
+  const dp = Array.from({ length: rows }, () => Array(cols).fill(0));
+  for (let i = 0; i < rows; i += 1) dp[i][0] = i;
+  for (let j = 0; j < cols; j += 1) dp[0][j] = j;
+  for (let i = 1; i < rows; i += 1) {
+    for (let j = 1; j < cols; j += 1) {
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
+      );
+    }
+  }
+  return dp[left.length][right.length];
+};
+
+const autoCorrectVoiceWord = (word) => {
+  if (!word || /\d/.test(word) || word.length < 3) return word;
+  let best = word;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  voiceCanonicalWords.forEach((candidate) => {
+    const distance = getEditDistance(word, candidate);
+    if (distance < bestDistance) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  });
+  if (bestDistance <= 1) return best;
+  return word;
+};
+
+const autoCorrectVoiceText = (text = '') => (
+  text
+    .split(/\s+/)
+    .map((token) => autoCorrectVoiceWord(token))
+    .join(' ')
+);
+
 const normalizeVoiceText = (value = '') => (
-  value
+  autoCorrectVoiceText(
+    value
     .toLowerCase()
     .replace(/[^a-z0-9#\-\s]/g, ' ')
     .replace(/\bcan you hear me\b/g, ' ')
     .replace(/\bokay\b/g, ' ')
     .replace(/\bbut\b/g, ' ')
+    .replace(/\b(and|end|inn|inner)\s+play\b/g, ' in play ')
+    .replace(/\b(and|end|inn|inner)\s+(field|side)\b/g, ' in $2 ')
     .replace(/\band play\b/g, ' in play ')
     .replace(/\bn play\b/g, ' in play ')
     .replace(/\bon play\b/g, ' in play ')
-    .replace(/\bair\b/g, ' error ')
+    .replace(/\b(air|era|eror|erro)\b/g, ' error ')
     .replace(/\bball and play\b/g, ' ball in play ')
     .replace(/\bball n play\b/g, ' ball in play ')
     .replace(/\bball on play\b/g, ' ball in play ')
@@ -344,6 +399,7 @@ const normalizeVoiceText = (value = '') => (
     .replace(/\b363\b/g, ' 3-6-3 ')
     .replace(/\s+/g, ' ')
     .trim()
+  )
 );
 
 const hasStandaloneWord = (text, word) => {
