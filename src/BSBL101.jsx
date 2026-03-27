@@ -3606,7 +3606,7 @@ setCurrentBases(nextBases);
 setTotalRunsAllowed((prev) => prev + runsScored);
 setPendingPitch(null);
 
-const outOutcomes = ['K', 'OUT', 'SAC', 'DP', 'E'];
+const outOutcomes = ['K', 'OUT', 'SAC', 'DP'];
 if (outOutcomes.includes(outcome)) {
   const newOuts = currentOuts + (outcome === 'DP' ? 2 : 1);
   setCurrentOuts(newOuts);
