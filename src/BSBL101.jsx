@@ -327,6 +327,19 @@ const voiceCanonicalWords = [
   'flyout', 'comebacker'
 ];
 
+const voicePitchWords = new Set(
+  voicePitchAliases.flatMap((entry) => [entry.type.toLowerCase(), ...entry.aliases.map((alias) => alias.toLowerCase())])
+);
+const voiceLocationWords = new Set(['up', 'down', 'away', 'in', 'inside', 'outside', 'low', 'high']);
+const voiceResultWords = new Set([
+  'ball', 'strike', 'called', 'swinging', 'foul', 'play', 'out', 'single', 'double',
+  'triple', 'walk', 'home', 'run', 'sac', 'doubleplay', 'error', 'hit', 'pitch'
+]);
+const voiceDefensiveWords = new Set([
+  'shortstop', 'pitcher', 'catcher', 'left', 'center', 'right', 'field', 'first',
+  'second', 'third', 'base', 'comebacker', 'lf', 'cf', 'rf', 'ss'
+]);
+
 const getEditDistance = (left = '', right = '') => {
   if (left === right) return 0;
   const rows = left.length + 1;
@@ -369,36 +382,84 @@ const autoCorrectVoiceText = (text = '') => (
     .join(' ')
 );
 
+const applyContextualVoiceCorrections = (text = '') => {
+  const tokens = text.split(/\s+/).filter(Boolean);
+  return tokens.map((token, index) => {
+    const previous = tokens[index - 1] || '';
+    const next = tokens[index + 1] || '';
+    const previousTwo = tokens[index - 2] || '';
+    const nextTwo = tokens[index + 2] || '';
+    const previousLooksLikePitch = voicePitchWords.has(previous) || voicePitchWords.has(`${previous} ${token}`);
+    const nextLooksLikeResult = voiceResultWords.has(next) || voiceLocationWords.has(next);
+    const nextLooksDefensive = voiceDefensiveWords.has(next) || voiceDefensiveWords.has(`${next} ${nextTwo}`);
+
+    if (['air', 'era', 'eror', 'erro', 'ear'].includes(token)) {
+      if (
+        nextLooksDefensive
+        || previous === 'play'
+        || previous === 'in'
+        || previousTwo === 'in'
+        || previous === 'ball'
+      ) {
+        return 'error';
+      }
+    }
+
+    if (['and', 'end', 'inn', 'inner'].includes(token)) {
+      const isSwingPhrase = previous === 'swing' || next === 'miss';
+      if (!isSwingPhrase && (next === 'play' || next === 'field' || next === 'side')) {
+        return 'in';
+      }
+      if (!isSwingPhrase && previousLooksLikePitch && (!next || nextLooksLikeResult || nextLooksDefensive)) {
+        return 'in';
+      }
+    }
+
+    if (token === 'are') {
+      if (previousLooksLikePitch && (!next || nextLooksLikeResult)) {
+        return 'away';
+      }
+      if (nextLooksDefensive || previous === 'play' || previousTwo === 'in') {
+        return 'error';
+      }
+    }
+
+    return token;
+  }).join(' ');
+};
+
 const normalizeVoiceText = (value = '') => (
   autoCorrectVoiceText(
-    value
-    .toLowerCase()
-    .replace(/[^a-z0-9#\-\s]/g, ' ')
-    .replace(/\bcan you hear me\b/g, ' ')
-    .replace(/\bokay\b/g, ' ')
-    .replace(/\bbut\b/g, ' ')
-    .replace(/\b(and|end|inn|inner)\s+play\b/g, ' in play ')
-    .replace(/\b(and|end|inn|inner)\s+(field|side)\b/g, ' in $2 ')
-    .replace(/\band play\b/g, ' in play ')
-    .replace(/\bn play\b/g, ' in play ')
-    .replace(/\bon play\b/g, ' in play ')
-    .replace(/\b(air|era|eror|erro)\b/g, ' error ')
-    .replace(/\bball and play\b/g, ' ball in play ')
-    .replace(/\bball n play\b/g, ' ball in play ')
-    .replace(/\bball on play\b/g, ' ball in play ')
-    .replace(/\bout 63\b/g, ' out 6-3 ')
-    .replace(/\bout 53\b/g, ' out 5-3 ')
-    .replace(/\bout 43\b/g, ' out 4-3 ')
-    .replace(/\bout 13\b/g, ' out 1-3 ')
-    .replace(/\b63\b/g, ' 6-3 ')
-    .replace(/\b53\b/g, ' 5-3 ')
-    .replace(/\b43\b/g, ' 4-3 ')
-    .replace(/\b13\b/g, ' 1-3 ')
-    .replace(/\b643\b/g, ' 6-4-3 ')
-    .replace(/\b543\b/g, ' 5-4-3 ')
-    .replace(/\b363\b/g, ' 3-6-3 ')
-    .replace(/\s+/g, ' ')
-    .trim()
+    applyContextualVoiceCorrections(
+      value
+        .toLowerCase()
+        .replace(/[^a-z0-9#\-\s]/g, ' ')
+        .replace(/\bcan you hear me\b/g, ' ')
+        .replace(/\bokay\b/g, ' ')
+        .replace(/\bbut\b/g, ' ')
+        .replace(/\b(and|end|inn|inner)\s+play\b/g, ' in play ')
+        .replace(/\b(and|end|inn|inner)\s+(field|side)\b/g, ' in $2 ')
+        .replace(/\band play\b/g, ' in play ')
+        .replace(/\bn play\b/g, ' in play ')
+        .replace(/\bon play\b/g, ' in play ')
+        .replace(/\b(air|era|eror|erro)\b/g, ' error ')
+        .replace(/\bball and play\b/g, ' ball in play ')
+        .replace(/\bball n play\b/g, ' ball in play ')
+        .replace(/\bball on play\b/g, ' ball in play ')
+        .replace(/\bout 63\b/g, ' out 6-3 ')
+        .replace(/\bout 53\b/g, ' out 5-3 ')
+        .replace(/\bout 43\b/g, ' out 4-3 ')
+        .replace(/\bout 13\b/g, ' out 1-3 ')
+        .replace(/\b63\b/g, ' 6-3 ')
+        .replace(/\b53\b/g, ' 5-3 ')
+        .replace(/\b43\b/g, ' 4-3 ')
+        .replace(/\b13\b/g, ' 1-3 ')
+        .replace(/\b643\b/g, ' 6-4-3 ')
+        .replace(/\b543\b/g, ' 5-4-3 ')
+        .replace(/\b363\b/g, ' 3-6-3 ')
+        .replace(/\s+/g, ' ')
+        .trim()
+    )
   )
 );
 
