@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { Plus, Trash2, Download, ChevronRight, TrendingUp, Target, BarChart3, Users } from 'lucide-react';
 
 
@@ -1905,10 +1906,14 @@ const saveLineup = () => {
 
 useEffect(() => () => {
   if (voiceRecognitionRef.current) {
-    voiceRecognitionRef.current.onresult = null;
-    voiceRecognitionRef.current.onerror = null;
-    voiceRecognitionRef.current.onend = null;
-    voiceRecognitionRef.current.stop();
+    if (voiceRecognitionRef.current.kind === 'native') {
+      voiceRecognitionRef.current.stop?.();
+    } else {
+      voiceRecognitionRef.current.onresult = null;
+      voiceRecognitionRef.current.onerror = null;
+      voiceRecognitionRef.current.onend = null;
+      voiceRecognitionRef.current.stop();
+    }
   }
 }, []);
 
@@ -1986,16 +1991,122 @@ const applyVoiceCommand = (parsedAction = voiceCommandPreview) => {
   setVoiceCommandError('');
 };
 
-const toggleVoiceListening = () => {
+const stopNativeVoiceListening = async () => {
+  try {
+    await SpeechRecognition.stop();
+  } catch {
+    // iOS can throw here if the recognizer already ended.
+  }
+  try {
+    await SpeechRecognition.removeAllListeners();
+  } catch {
+    // Ignore listener cleanup failures during shutdown.
+  }
+  voiceRecognitionRef.current = null;
+  setIsVoiceListening(false);
+};
+
+const startNativeVoiceListening = async () => {
+  try {
+    const { available } = await SpeechRecognition.available();
+    if (!available) {
+      setVoiceCommandError('Speech input is not available on this device right now.');
+      return;
+    }
+
+    const currentPermissions = await SpeechRecognition.checkPermissions();
+    let permissionState = currentPermissions?.speechRecognition;
+    if (permissionState !== 'granted') {
+      const requestedPermissions = await SpeechRecognition.requestPermissions();
+      permissionState = requestedPermissions?.speechRecognition;
+    }
+
+    if (permissionState !== 'granted') {
+      setVoiceCommandError('Allow microphone and speech recognition access to use Speak to Text.');
+      return;
+    }
+
+    await SpeechRecognition.removeAllListeners();
+    const listeningHandle = await SpeechRecognition.addListener('listeningState', ({ status }) => {
+      if (status === 'stopped') {
+        setIsVoiceListening(false);
+      }
+    });
+
+    voiceRecognitionRef.current = {
+      kind: 'native',
+      stop: async () => {
+        try {
+          await SpeechRecognition.stop();
+        } catch {
+          // Safe to ignore if recognition already stopped.
+        }
+        try {
+          await listeningHandle.remove();
+        } catch {
+          // Ignore listener removal issues.
+        }
+        try {
+          await SpeechRecognition.removeAllListeners();
+        } catch {
+          // Ignore cleanup failures.
+        }
+        voiceRecognitionRef.current = null;
+        setIsVoiceListening(false);
+      }
+    };
+
+    setIsVoiceListening(true);
+    setVoiceCommandError('');
+
+    const result = await SpeechRecognition.start({
+      language: 'en-US',
+      maxResults: 1,
+      prompt: 'Describe the pitch',
+      partialResults: false,
+      popup: false
+    });
+
+    const transcript = result?.matches?.[0] || '';
+    if (transcript) {
+      setVoiceCommandText(transcript);
+      setVoiceCommandError('');
+      setTimeout(() => previewVoiceCommand(transcript), 0);
+    } else {
+      setVoiceCommandError('No speech was captured. Try again or type the command below.');
+    }
+
+    await listeningHandle.remove();
+    await SpeechRecognition.removeAllListeners();
+    voiceRecognitionRef.current = null;
+    setIsVoiceListening(false);
+  } catch {
+    setVoiceCommandError('Mic capture failed. You can still type the command below.');
+    stopNativeVoiceListening();
+  }
+};
+
+const toggleVoiceListening = async () => {
   if (typeof window === 'undefined') return;
-  const RecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!RecognitionClass) {
-    setVoiceCommandError('Mic input is not supported here, but typed smart input still works.');
+  const isNativePlatform = Capacitor.getPlatform() !== 'web';
+
+  if (isVoiceListening && voiceRecognitionRef.current) {
+    if (voiceRecognitionRef.current.kind === 'native') {
+      await stopNativeVoiceListening();
+    } else {
+      voiceRecognitionRef.current.stop();
+    }
     return;
   }
 
-  if (isVoiceListening && voiceRecognitionRef.current) {
-    voiceRecognitionRef.current.stop();
+  if (isNativePlatform) {
+    await startNativeVoiceListening();
+    return;
+  }
+
+  const RecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!RecognitionClass) {
+    setVoiceCommandError('Mic input is not supported here, but typed smart input still works.');
     return;
   }
 
@@ -2015,9 +2126,11 @@ const toggleVoiceListening = () => {
   };
   recognition.onend = () => {
     setIsVoiceListening(false);
+    voiceRecognitionRef.current = null;
   };
   voiceRecognitionRef.current = recognition;
   setIsVoiceListening(true);
+  setVoiceCommandError('');
   recognition.start();
 };
 
@@ -8856,7 +8969,10 @@ const fastballSet = new Set(['4S', '2S', 'SNK', 'CT']);
 const recentAtBatsForCurrentHitter = getRecentAtBatsForCurrentHitter(3);
 const currentPitchCount = getCountFromPitches(atBatPitches);
 const isAwaitingAtBatResult = atBatPitches.at(-1)?.strikeType === 'In Play';
-const supportsVoiceRecognition = typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
+const supportsVoiceRecognition = typeof window !== 'undefined' && (
+  Capacitor.getPlatform() !== 'web'
+  || Boolean(window.SpeechRecognition || window.webkitSpeechRecognition)
+);
 return (
 <div className={`${shellClass} p-2.5 sm:p-3 pb-24 ${appClass}`} style={appStyle}>
 <BroadcastStyle />
