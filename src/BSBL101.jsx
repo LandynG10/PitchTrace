@@ -1906,14 +1906,7 @@ const saveLineup = () => {
 
 useEffect(() => () => {
   if (voiceRecognitionRef.current) {
-    if (voiceRecognitionRef.current.kind === 'native') {
-      voiceRecognitionRef.current.stop?.();
-    } else {
-      voiceRecognitionRef.current.onresult = null;
-      voiceRecognitionRef.current.onerror = null;
-      voiceRecognitionRef.current.onend = null;
-      voiceRecognitionRef.current.stop();
-    }
+    stopVoiceListeningSession();
   }
 }, []);
 
@@ -2006,6 +1999,46 @@ const stopNativeVoiceListening = async () => {
   setIsVoiceListening(false);
 };
 
+const stopVoiceListeningSession = async () => {
+  if (!voiceRecognitionRef.current) {
+    setIsVoiceListening(false);
+    return;
+  }
+
+  if (voiceRecognitionRef.current.kind === 'native') {
+    await stopNativeVoiceListening();
+    return;
+  }
+
+  try {
+    voiceRecognitionRef.current.onresult = null;
+    voiceRecognitionRef.current.onerror = null;
+    voiceRecognitionRef.current.onend = null;
+    voiceRecognitionRef.current.stop();
+  } catch {
+    // Ignore browser speech shutdown errors when recognition already ended.
+  }
+  voiceRecognitionRef.current = null;
+  setIsVoiceListening(false);
+};
+
+const resetLiveEntryTransientState = async ({ clearVoiceText = true, clearUndoHistory = false } = {}) => {
+  await stopVoiceListeningSession();
+  setPendingPitch(null);
+  setShowOutModal(false);
+  setOutLocation('');
+  setPendingDefensiveOutcome(null);
+  setShowHitLocationModal(false);
+  setHitLocation('');
+  setPendingHitOutcome(null);
+  setShowConfirmModal(null);
+  setCurrentVelocity('');
+  setVoiceCommandPreview(null);
+  setVoiceCommandError('');
+  if (clearVoiceText) setVoiceCommandText('');
+  if (clearUndoHistory) setActionHistory([]);
+};
+
 const startNativeVoiceListening = async () => {
   try {
     const { available } = await SpeechRecognition.available();
@@ -2091,11 +2124,7 @@ const toggleVoiceListening = async () => {
   const isNativePlatform = Capacitor.getPlatform() !== 'web';
 
   if (isVoiceListening && voiceRecognitionRef.current) {
-    if (voiceRecognitionRef.current.kind === 'native') {
-      await stopNativeVoiceListening();
-    } else {
-      voiceRecognitionRef.current.stop();
-    }
+    await stopVoiceListeningSession();
     return;
   }
 
@@ -3501,6 +3530,7 @@ setPendingOpponent('');
 };
 
 const returnToHome = () => {
+resetLiveEntryTransientState({ clearUndoHistory: true });
 setShowPitcherSelect(false);
 setShowAddPitcherModal(false);
 setShowContinueModal(false);
@@ -3592,8 +3622,7 @@ setPitchTrail(newGame.state.pitchTrail || []);
 setSelectedZone(newGame.state.selectedZone || null);
 setCurrentBases(cloneBases(newGame.state.currentBases));
 setTotalRunsAllowed(newGame.state.totalRunsAllowed || 0);
-setCurrentVelocity('');
-setActionHistory([]);
+resetLiveEntryTransientState({ clearUndoHistory: true });
 setCurrentOuts(newGame.state.currentOuts || 0);
 setShowPitcherSelect(false);
 setView(bullpenMode ? 'bullpen' : (scoutingMode ? 'pitch-entry' : 'pitch-entry'));
@@ -3945,6 +3974,10 @@ setAtBatPitches([]);
 setPitchCountBaseline(0);
 setPitchTrail([]);
 setSelectedZone(null);
+setCurrentVelocity('');
+setPendingPitch(null);
+setVoiceCommandPreview(null);
+setVoiceCommandError('');
 setCurrentBatter(getNextBatterSlot(currentBatter));
 setShowConfirmModal(null);
  
@@ -3972,6 +4005,7 @@ if (currentGame) {
   }
   saveGames(updatedGames);
   setPendingPitchingChangeGame(updatedGame);
+  resetLiveEntryTransientState({ clearUndoHistory: true });
   setShowPitcherSelect(true);
 }
 setShowConfirmModal(null);
@@ -4015,6 +4049,7 @@ const existingIndex = games.findIndex(g => g.id === currentGame.id);
     saveGames(updatedGames);
     if (!shouldContinue) {
       clearAutosave();
+      resetLiveEntryTransientState({ clearUndoHistory: true });
       setCurrentGame(null);
       setAtBatPitches([]);
       setPitchTrail([]);
@@ -4058,6 +4093,7 @@ const continueGame = (game) => {
   setSelectedZone(state.selectedZone || null);
   setCurrentBases(cloneBases(state.currentBases));
   setTotalRunsAllowed(state.totalRunsAllowed || 0);
+  resetLiveEntryTransientState({ clearUndoHistory: true });
   setBullpenMode(false);
   setIsScouting(resumeScouting);
   setScoutingMode(false);
