@@ -615,6 +615,7 @@ const buildPrintableDocument = (title, html, autoPrint = false) => {
     .join('\n');
   const rootStyle = document.documentElement.getAttribute('style') || '';
   const bodyClassName = document.body.className || '';
+  const isPitchLogDocument = title === 'PitchTrace Pitch Log';
 
   return `
     <!doctype html>
@@ -633,16 +634,37 @@ const buildPrintableDocument = (title, html, autoPrint = false) => {
           body {
             margin: 0;
             min-height: auto;
-            background: #020617;
+            background: ${isPitchLogDocument ? '#ffffff' : '#020617'};
+            color: ${isPitchLogDocument ? '#0f172a' : 'inherit'};
           }
           .print-shell {
             max-width: 1100px;
             margin: 0 auto;
             padding: 24px;
+            background: ${isPitchLogDocument ? '#ffffff' : 'transparent'};
+            color: ${isPitchLogDocument ? '#0f172a' : 'inherit'};
           }
           .no-print {
             display: none !important;
           }
+          ${isPitchLogDocument ? `
+          .print-shell,
+          .print-shell * {
+            color: #0f172a !important;
+          }
+          .print-shell .bg-slate-900,
+          .print-shell .bg-slate-100,
+          .print-shell .bg-white,
+          .print-shell .bg-cyan-50\\/60,
+          .print-shell .bg-rose-50\\/60 {
+            background: #ffffff !important;
+          }
+          .print-shell .border-slate-300,
+          .print-shell .border-slate-200,
+          .print-shell .border-slate-100 {
+            border-color: #cbd5e1 !important;
+          }
+          ` : ''}
           @media print {
             body {
               background: #ffffff !important;
@@ -940,6 +962,12 @@ if (selectedPitcher) {
 }
 // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [selectedPitcher]);
+
+useEffect(() => {
+  if (atBatPitches.at(-1)?.strikeType === 'In Play') {
+    setPendingPitch(null);
+  }
+}, [atBatPitches]);
 
 useEffect(() => {
   if (typeof window === 'undefined') return;
@@ -3469,6 +3497,10 @@ return pitchers.map((pitcher) => {
 };
 
 const recordPitch = (type, isStrike, strikeType = null, ballType = null, zoneOverride = null, velocityOverride = null) => {
+if (atBatPitches.at(-1)?.strikeType === 'In Play') {
+  setPendingPitch(null);
+  return;
+}
 const currentCount = getCountFromPitches(atBatPitches);
 if (!currentGame?.isBullpen && (currentCount.balls >= 4 || currentCount.strikes >= 3)) {
   setPendingPitch(null);
@@ -3521,6 +3553,7 @@ if (!currentGame?.isBullpen && strikes >= 3 && (strikeType === 'Called' || strik
 };
 
 const selectPitchType = (type, isStrike) => {
+if (atBatPitches.at(-1)?.strikeType === 'In Play') return;
 setPendingPitch({ type, isStrike });
 };
 
@@ -8705,6 +8738,7 @@ const inGameStats = getInGamePitchStats();
 const fastballSet = new Set(['4S', '2S', 'SNK', 'CT']);
 const recentAtBatsForCurrentHitter = getRecentAtBatsForCurrentHitter(3);
 const currentPitchCount = getCountFromPitches(atBatPitches);
+const isAwaitingAtBatResult = atBatPitches.at(-1)?.strikeType === 'In Play';
 const supportsVoiceRecognition = typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
 return (
 <div className={`${shellClass} p-2.5 sm:p-3 pb-24 ${appClass}`} style={appStyle}>
@@ -9181,7 +9215,8 @@ return (
               <button
                 key={type}
                 onClick={() => selectPitchType(type, true)}
-                className={`bg-cyan-400/10 hover:bg-cyan-400/20 border border-cyan-400/30 rounded-xl text-cyan-400 font-bold active:scale-95 transition-all ${oneHandMode ? 'h-[4.5rem] text-2xl' : 'h-12 text-base'} min-h-[3rem]`}
+                disabled={isAwaitingAtBatResult}
+                className={`bg-cyan-400/10 hover:bg-cyan-400/20 border border-cyan-400/30 rounded-xl text-cyan-400 font-bold active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed ${oneHandMode ? 'h-[4.5rem] text-2xl' : 'h-12 text-base'} min-h-[3rem]`}
               >
                 {type}
               </button>
@@ -9197,7 +9232,8 @@ return (
                   <button
                     key={strikeType}
                     onClick={() => recordPitch(pendingPitch.type, true, strikeType)}
-                    className="py-1.5 bg-cyan-400/20 hover:bg-cyan-400/30 border border-cyan-400/40 rounded-lg text-cyan-400 font-medium text-[11px] active:scale-95 transition-all"
+                    disabled={isAwaitingAtBatResult}
+                    className="py-1.5 bg-cyan-400/20 hover:bg-cyan-400/30 border border-cyan-400/40 rounded-lg text-cyan-400 font-medium text-[11px] active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     {strikeType}
                   </button>
@@ -9220,7 +9256,8 @@ return (
                 onClick={() => {
                   selectPitchType(type, false);
                 }}
-                className={`bg-red-400/10 hover:bg-red-400/20 border border-red-400/30 rounded-xl text-red-400 font-bold active:scale-95 transition-all ${oneHandMode ? 'h-[4.5rem] text-2xl' : 'h-12 text-base'} min-h-[3rem]`}
+                disabled={isAwaitingAtBatResult}
+                className={`bg-red-400/10 hover:bg-red-400/20 border border-red-400/30 rounded-xl text-red-400 font-bold active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed ${oneHandMode ? 'h-[4.5rem] text-2xl' : 'h-12 text-base'} min-h-[3rem]`}
               >
                 {type}
               </button>
@@ -9240,7 +9277,8 @@ return (
                     onClick={() => {
                       recordPitch(pendingPitch.type, false, null, edge);
                     }}
-                    className="py-1.5 bg-red-400/20 hover:bg-red-400/30 border border-red-400/40 rounded-lg text-red-300 font-medium text-[11px] active:scale-95 transition-all"
+                    disabled={isAwaitingAtBatResult}
+                    className="py-1.5 bg-red-400/20 hover:bg-red-400/30 border border-red-400/40 rounded-lg text-red-300 font-medium text-[11px] active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     {edge}
                   </button>
@@ -9250,7 +9288,8 @@ return (
                     onClick={() => {
                       recordPitch(pendingPitch.type, false, null, 'HBP');
                     }}
-                    className="py-1.5 bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/40 rounded-lg text-amber-200 font-medium text-[11px] active:scale-95 transition-all col-span-2 sm:col-span-4"
+                    disabled={isAwaitingAtBatResult}
+                    className="py-1.5 bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/40 rounded-lg text-amber-200 font-medium text-[11px] active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed col-span-2 sm:col-span-4"
                   >
                     HBP
                   </button>
@@ -9263,7 +9302,12 @@ return (
 
       {/* Outcomes */}
       <div className="bg-slate-800/50 backdrop-blur-sm border border-amber-400/25 rounded-xl p-2 mb-16">
-        <div className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-3">At-Bat Result</div>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="text-slate-400 text-xs font-medium uppercase tracking-wider">At-Bat Result</div>
+          {isAwaitingAtBatResult ? (
+            <div className="text-[11px] text-amber-300">In play logged. Pick the result to continue.</div>
+          ) : null}
+        </div>
         <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
           {outcomes.map(outcome => (
             <button
