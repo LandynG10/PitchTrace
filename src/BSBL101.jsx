@@ -6,21 +6,12 @@ import { Plus, Trash2, Download, ChevronRight, TrendingUp, Target, BarChart3, Us
 
 const BroadcastStyle = () => (
   <style>{`
-@import url('https://fonts.googleapis.com/css2?family=Teko:wght@400;600;700&family=Barlow+Condensed:wght@400;600;700&display=swap');
 :root {
   --broadcast-primary: #22d3ee;
   --broadcast-accent: #f59e0b;
   --app-primary: #22d3ee;
   --app-accent: #f59e0b;
   --app-font-size: 16px;
-}
-body {
-  font-family: 'Barlow Condensed', 'Segoe UI', 'Helvetica Neue', sans-serif;
-  letter-spacing: 0.01em;
-}
-h1, h2, h3, .broadcast-title {
-  font-family: 'Teko', 'Oswald', 'Arial Narrow', sans-serif;
-  letter-spacing: 0.03em;
 }
 .app-theme {
   font-size: var(--app-font-size, 16px);
@@ -37,11 +28,6 @@ h1, h2, h3, .broadcast-title {
 .app-theme .text-amber-500 { color: var(--app-accent) !important; }
 .app-theme .border-amber-400 { border-color: var(--app-accent) !important; }
 .app-theme .border-amber-500 { border-color: var(--app-accent) !important; }
-.app-contrast { filter: contrast(1.15) saturate(1.05); }
-.reduce-motion * {
-  transition: none !important;
-  animation: none !important;
-}
 .cover-start-btn {
   animation: coverPulseFade 2.1s ease-in-out infinite;
 }
@@ -57,7 +43,7 @@ const Breadcrumbs = ({ text }) => (
   <div className="text-xs text-slate-400 mb-3">{text}</div>
 );
 
-const shellClass = 'min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white';
+const shellClass = 'min-h-screen bg-transparent text-slate-50';
 const readDisplayPrefs = () => {
   if (typeof window === 'undefined') {
     return {
